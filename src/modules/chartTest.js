@@ -1,5 +1,5 @@
 import Chart from "chart.js/auto";
-
+// test
 export class ChartTest {
   constructor() {
     const data = [
