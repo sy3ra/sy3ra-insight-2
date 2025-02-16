@@ -1,5 +1,5 @@
 import { ChartTest } from "./modules/chartTest.js";
-
+import axios from "axios";
 class App {
   constructor() {
     this.mouseCaptureCanvas = document.createElement("canvas");
@@ -22,7 +22,36 @@ class App {
     this.stageWidth = document.body.clientWidth;
     this.stageHeight = document.body.clientHeight;
 
-    this.chart = new ChartTest();
+    this.chartData = async (endTime) => {
+      try {
+        const symbol = "BTCUSDT";
+        const interval = "1h";
+        const limit = 24;
+        let url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+
+        if (endTime) {
+          url += `&endTime=${endTime}`;
+        }
+        const response = await axios.get(url);
+        const formattedData = response.data.map((item) => ({
+          openTime: item[0],
+          open: parseFloat(item[1]),
+          high: parseFloat(item[2]),
+          low: parseFloat(item[3]),
+          close: parseFloat(item[4]),
+          volume: parseFloat(item[5]),
+          closeTime: item[6],
+        }));
+
+        return formattedData;
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    this.chartData().then((formattedData) => {
+      new ChartTest(formattedData, this.chartCtx);
+    });
 
     window.addEventListener("resize", this.resize.bind(this), false);
     this.resize();
