@@ -4,8 +4,11 @@ export class ChartCrosshair {
     this.chart = chart;
     this.x = 0;
     this.y = 0;
+    this.previousX = null;
+    this.previousY = null;
     this.chartArea = this.chart.chartArea;
-    // requestAnimationFrame(this.draw.bind(this));
+
+    requestAnimationFrame(this.draw.bind(this));
   }
 
   updatePosition(x, y) {
@@ -14,7 +17,14 @@ export class ChartCrosshair {
   }
 
   draw() {
-    const { ctx, x, y, chart } = this;
+    const { ctx, x, y, previousX, previousY } = this;
+
+    // 위치가 변경되지 않았으면 그리지 않음
+    if (x === previousX && y === previousY) {
+      requestAnimationFrame(this.draw.bind(this));
+      return;
+    }
+    console.log("draw");
 
     // 캔버스를 지우고 새로 그리기
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -35,6 +45,10 @@ export class ChartCrosshair {
     ctx.lineTo(ctx.canvas.width, y);
     ctx.stroke();
 
-    // requestAnimationFrame(this.draw.bind(this));
+    // 이전 위치 업데이트
+    this.previousX = x;
+    this.previousY = y;
+
+    requestAnimationFrame(this.draw.bind(this));
   }
 }

@@ -80,7 +80,7 @@ class App {
 
     // 애니메이션 루프 상태 관리
     this.isAnimating = true;
-    requestAnimationFrame(this.animate.bind(this));
+    // requestAnimationFrame(this.animate.bind(this));
   }
 
   //리사이즈 핸들러
@@ -110,8 +110,9 @@ class App {
 
   animate() {
     if (!this.isAnimating) return;
+    // console.log("animate");
 
-    window.requestAnimationFrame(this.animate.bind(this));
+    // window.requestAnimationFrame(this.animate.bind(this));
 
     // 그리기 작업 수행...
     if (this.chartTestInstance && this.chartTestInstance.crosshair) {
