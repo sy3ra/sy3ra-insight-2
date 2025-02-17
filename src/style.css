@@ -34,12 +34,17 @@ canvas {
 }
 
 canvas#overlayCanvas {
+  z-index: 20;
+  pointer-events: none;
+}
+
+canvas#crosshairCanvas {
   z-index: 50;
   pointer-events: none;
 }
 
 canvas#chartCanvas {
-  z-index: 40;
+  z-index: 0;
 }
 
 canvas#drawingCanvas {

@@ -5,7 +5,7 @@ import {
 } from "chartjs-chart-financial";
 import "chartjs-adapter-date-fns";
 import zoomPlugin from "chartjs-plugin-zoom";
-
+import { ChartCrosshair } from "./chartCrosshair";
 // Chart.js에 필요한 요소 등록
 Chart.register(
   ...registerables,
@@ -15,11 +15,12 @@ Chart.register(
 );
 
 export class ChartTest {
-  constructor(data, ctx) {
+  constructor(data, chartCtx, crosshairCtx) {
     this.data = this.candleData(data);
-    this.ctx = ctx;
+    this.chartCtx = chartCtx;
+    this.crosshairCtx = crosshairCtx;
 
-    this.chart = new Chart(this.ctx, {
+    this.chart = new Chart(this.chartCtx, {
       type: "candlestick",
       data: {
         datasets: [
@@ -36,6 +37,9 @@ export class ChartTest {
         ],
       },
       options: {
+        animation: {
+          duration: 0,
+        },
         responsive: true,
         scales: {
           x: {
@@ -50,6 +54,11 @@ export class ChartTest {
           },
           y: {
             beginAtZero: false,
+            ticks: {
+              callback: function (value) {
+                return value.toFixed(2); // 소수점 2자리까지 표시
+              },
+            },
           },
         },
         plugins: {
@@ -77,6 +86,8 @@ export class ChartTest {
         },
       },
     });
+
+    this.crosshair = new ChartCrosshair(this.crosshairCtx, this.chart);
   }
 
   candleData(data) {
@@ -87,5 +98,11 @@ export class ChartTest {
       l: item.low,
       c: item.close,
     }));
+  }
+
+  updateMousePosition(x, y) {
+    this.x = x;
+    this.y = y;
+    this.crosshair.updatePosition(x, y);
   }
 }

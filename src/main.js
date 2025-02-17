@@ -8,6 +8,13 @@ class App {
     this.chartCanvas.id = "chartCanvas";
     this.chartCtx = this.chartCanvas.getContext("2d");
     document.body.appendChild(this.chartCanvas);
+
+    // 크로스헤어 캔버스
+    this.crosshairCanvas = document.createElement("canvas");
+    this.crosshairCanvas.id = "crosshairCanvas";
+    this.crosshairCtx = this.crosshairCanvas.getContext("2d");
+    document.body.appendChild(this.crosshairCanvas);
+
     // 오버레이 캔버스
     this.overlayCanvas = document.createElement("canvas");
     this.overlayCanvas.id = "overlayCanvas";
@@ -54,12 +61,25 @@ class App {
 
     // 차트 데이터 가져온 후 차트 인스턴스 생성
     this.chartData().then((formattedData) => {
-      new ChartTest(formattedData, this.chartCtx);
+      this.chartTestInstance = new ChartTest(
+        formattedData,
+        this.chartCtx,
+        this.crosshairCtx
+      );
     });
 
+    // 차트 캔버스 마우스 이벤트 핸들러
+    const events = ["mousemove", "mousedown", "mouseup", "click"];
+    events.forEach((event) => {
+      this.chartCanvas.addEventListener(event, this.handleMouseMove.bind(this));
+    });
+
+    //resize 이벤트 리스너
     window.addEventListener("resize", this.resize.bind(this), false);
     this.resize();
 
+    // 애니메이션 루프 상태 관리
+    this.isAnimating = true;
     requestAnimationFrame(this.animate.bind(this));
   }
 
@@ -72,6 +92,9 @@ class App {
     this.chartCanvas.width = this.stageWidth * 2;
     this.chartCanvas.height = this.stageHeight * 2;
 
+    this.crosshairCanvas.width = this.stageWidth * 2;
+    this.crosshairCanvas.height = this.stageHeight * 2;
+
     this.overlayCanvas.width = this.stageWidth * 2;
     this.overlayCanvas.height = this.stageHeight * 2;
 
@@ -80,18 +103,37 @@ class App {
 
     // 캔버스 스케일 설정 레티나 디스플레이 대응
     this.chartCtx.scale(2, 2);
+    this.crosshairCtx.scale(2, 2);
     this.overlayCtx.scale(2, 2);
     this.drawingCtx.scale(2, 2);
   }
 
   animate() {
+    if (!this.isAnimating) return;
+
     window.requestAnimationFrame(this.animate.bind(this));
 
-    // this.mouseCaptureCtx.clearRect(0, 0, this.stageWidth, this.stageHeight);
-    // this.chartCtx.clearRect(0, 0, this.stageWidth, this.stageHeight);
-    // this.drawingCtx.clearRect(0, 0, this.stageWidth, this.stageHeight);
+    // 그리기 작업 수행...
+    if (this.chartTestInstance && this.chartTestInstance.crosshair) {
+      this.chartTestInstance.crosshair.draw();
+    }
 
-    // this.chart.draw(this.chartCtx);
+    // 기타 그리기 작업...
+  }
+
+  stopAnimation() {
+    this.isAnimating = false;
+  }
+
+  // 마우스 이벤트 핸들러
+  handleMouseMove(event) {
+    const rect = this.chartCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    if (this.chartTestInstance) {
+      this.chartTestInstance.updateMousePosition(x, y);
+    }
   }
 }
 
