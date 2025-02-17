@@ -33,13 +33,13 @@ canvas {
   height: 100%;
 }
 
-canvas#mouseCaptureCanvas {
+canvas#overlayCanvas {
   z-index: 50;
+  pointer-events: none;
 }
 
 canvas#chartCanvas {
   z-index: 40;
-  pointer-events: none;
 }
 
 canvas#drawingCanvas {

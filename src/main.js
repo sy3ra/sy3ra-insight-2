@@ -3,17 +3,16 @@ import axios from "axios";
 
 class App {
   constructor() {
-    // 마우스 캡쳐 캔버스
-    this.mouseCaptureCanvas = document.createElement("canvas");
-    this.mouseCaptureCanvas.id = "mouseCaptureCanvas";
-    this.mouseCaptureCtx = this.mouseCaptureCanvas.getContext("2d");
-    document.body.appendChild(this.mouseCaptureCanvas);
-
     //차트 캔버스
     this.chartCanvas = document.createElement("canvas");
     this.chartCanvas.id = "chartCanvas";
     this.chartCtx = this.chartCanvas.getContext("2d");
     document.body.appendChild(this.chartCanvas);
+    // 오버레이 캔버스
+    this.overlayCanvas = document.createElement("canvas");
+    this.overlayCanvas.id = "overlayCanvas";
+    this.overlayCtx = this.overlayCanvas.getContext("2d");
+    document.body.appendChild(this.overlayCanvas);
 
     // 그리기 캔버스
     this.drawingCanvas = document.createElement("canvas");
@@ -70,18 +69,18 @@ class App {
     this.stageHeight = document.body.clientHeight;
 
     // 캔버스 크기 설정
-    this.mouseCaptureCanvas.width = this.stageWidth * 2;
-    this.mouseCaptureCanvas.height = this.stageHeight * 2;
-
     this.chartCanvas.width = this.stageWidth * 2;
     this.chartCanvas.height = this.stageHeight * 2;
+
+    this.overlayCanvas.width = this.stageWidth * 2;
+    this.overlayCanvas.height = this.stageHeight * 2;
 
     this.drawingCanvas.width = this.stageWidth * 2;
     this.drawingCanvas.height = this.stageHeight * 2;
 
     // 캔버스 스케일 설정 레티나 디스플레이 대응
-    this.mouseCaptureCtx.scale(2, 2);
     this.chartCtx.scale(2, 2);
+    this.overlayCtx.scale(2, 2);
     this.drawingCtx.scale(2, 2);
   }
 
