@@ -75,6 +75,11 @@ class App {
       this.chartCanvas.addEventListener(event, this.handleMouseMove.bind(this));
     });
 
+    this.chartCanvas.addEventListener(
+      "mouseleave",
+      this.handleMouseLeave.bind(this)
+    );
+
     //resize 이벤트 리스너
     window.addEventListener("resize", this.resize.bind(this), false);
   }
@@ -115,9 +120,14 @@ class App {
     const rect = this.chartCanvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-
+    // console.log(x, y);
     if (this.chartTestInstance) {
       this.chartTestInstance.updateMousePosition(x, y);
+    }
+  }
+  handleMouseLeave(event) {
+    if (this.chartTestInstance) {
+      this.chartTestInstance.mouseLeave();
     }
   }
 }

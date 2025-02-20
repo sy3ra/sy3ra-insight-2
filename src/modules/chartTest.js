@@ -113,6 +113,10 @@ export class ChartTest {
     this.crosshair.updatePosition(x, y);
   }
 
+  mouseLeave() {
+    this.crosshair.mouseLeave();
+  }
+
   render() {
     this.chart.resize();
     this.chart.update();

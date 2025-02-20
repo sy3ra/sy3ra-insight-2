@@ -8,7 +8,7 @@ export class ChartCrosshair {
     this.y = 0;
     this.previousX = null;
     this.previousY = null;
-    this.chartArea = this.chart.chartArea;
+    this.chartArea = this.ctx.canvas.getBoundingClientRect();
 
     tickerInstance.subscribe(this.draw.bind(this));
   }
@@ -18,11 +18,15 @@ export class ChartCrosshair {
     this.y = y;
   }
 
+  mouseLeave() {
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+  }
+
   draw() {
     // console.log(this.ctx.canvas.width, this.ctx.canvas.height);
     const { ctx, x, y, previousX, previousY } = this;
+    // console.log(x, y);
 
-    // 위치가 변경되지 않았으면 그리지 않음
     if (x === previousX && y === previousY) {
       return;
     }
@@ -30,6 +34,7 @@ export class ChartCrosshair {
     // 캔버스를 지우고 새로 그리기
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+    // console.log(this.chartArea);
     // chartArea 밖에 있는 경우 리턴
     if (
       x < this.chartArea.left ||
@@ -37,6 +42,7 @@ export class ChartCrosshair {
       y < this.chartArea.top ||
       y > this.chartArea.bottom
     ) {
+      console.log("chartArea 밖에 있음");
       return;
     }
     // 크로스헤어 스타일 설정
