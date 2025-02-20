@@ -30,17 +30,18 @@ export class ChartTest {
             borderColor: "rgba(0, 0, 0, 1)",
             borderWidth: 1,
             // 캔들 하나의 폭을 10픽셀로 고정 (필요에 따라 값 조정)
-            barThickness: 20,
+            barThickness: "flex",
             // 또는 최대 폭을 제한하고 싶다면 다음 옵션도 사용 가능
             // maxBarThickness: 10,
           },
         ],
       },
       options: {
+        maintainAspectRatio: false,
         animation: {
           duration: 0,
         },
-        responsive: true,
+        responsive: false,
         scales: {
           x: {
             type: "time",
@@ -51,8 +52,14 @@ export class ChartTest {
                 hour: "MM/dd HH:mm",
               },
             },
+            ticks: {
+              autoSkip: true,
+              source: "auto",
+              display: true, // x축 레이블 표시
+            },
           },
           y: {
+            position: "right", // y축을 오른쪽에 표시
             beginAtZero: false,
             ticks: {
               callback: function (value) {
@@ -104,5 +111,10 @@ export class ChartTest {
     this.x = x;
     this.y = y;
     this.crosshair.updatePosition(x, y);
+  }
+
+  render() {
+    this.chart.resize();
+    this.chart.update();
   }
 }

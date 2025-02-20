@@ -66,6 +66,7 @@ class App {
         this.chartCtx,
         this.crosshairCtx
       );
+      this.resize();
     });
 
     // 차트 캔버스 마우스 이벤트 핸들러
@@ -76,14 +77,8 @@ class App {
 
     //resize 이벤트 리스너
     window.addEventListener("resize", this.resize.bind(this), false);
-    this.resize();
-
-    // 애니메이션 루프 상태 관리
-    this.isAnimating = true;
-    // requestAnimationFrame(this.animate.bind(this));
   }
 
-  //리사이즈 핸들러
   resize() {
     this.stageWidth = document.body.clientWidth;
     this.stageHeight = document.body.clientHeight;
@@ -106,27 +101,16 @@ class App {
     this.crosshairCtx.scale(2, 2);
     this.overlayCtx.scale(2, 2);
     this.drawingCtx.scale(2, 2);
-  }
 
-  animate() {
-    if (!this.isAnimating) return;
-    // console.log("animate");
-
-    // window.requestAnimationFrame(this.animate.bind(this));
-
-    // 그리기 작업 수행...
-    if (this.chartTestInstance && this.chartTestInstance.crosshair) {
-      this.chartTestInstance.crosshair.draw();
+    // 차트를 재렌더링 (ChartTest 클래스에 render() 같은 메서드가 필요)
+    if (
+      this.chartTestInstance &&
+      typeof this.chartTestInstance.render === "function"
+    ) {
+      this.chartTestInstance.render();
     }
-
-    // 기타 그리기 작업...
   }
 
-  stopAnimation() {
-    this.isAnimating = false;
-  }
-
-  // 마우스 이벤트 핸들러
   handleMouseMove(event) {
     const rect = this.chartCanvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
