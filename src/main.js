@@ -32,35 +32,7 @@ class MainCanvas {
     this.stageWidth = document.body.clientWidth;
     this.stageHeight = document.body.clientHeight;
 
-    // //초기 차트 데이터 가져오기 -> 분리 예정
-    // this.chartData = async (endTime) => {
-    //   try {
-    //     const symbol = "BTCUSDT";
-    //     const interval = "1h";
-    //     const limit = 24;
-    //     let url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-
-    //     if (endTime) {
-    //       url += `&endTime=${endTime}`;
-    //     }
-    //     const response = await axios.get(url);
-    //     const formattedData = response.data.map((item) => ({
-    //       openTime: item[0],
-    //       open: parseFloat(item[1]),
-    //       high: parseFloat(item[2]),
-    //       low: parseFloat(item[3]),
-    //       close: parseFloat(item[4]),
-    //       volume: parseFloat(item[5]),
-    //       closeTime: item[6],
-    //     }));
-
-    //     return formattedData;
-    //   } catch (error) {
-    //     console.error(error);
-    //   }
-    // };
-
-    // 차트 데이터 가져온 후 차트 인스턴스 생성
+    //차트 인스턴스 생성
     this.chartTestInstance = new ChartTest(this.chartCtx, this.crosshairCtx);
     this.resize();
 

@@ -7,7 +7,6 @@ class Ticker {
 
   subscribe(fn) {
     this.subscribers.add(fn);
-    console.log(this.subscribers);
     if (!this.isRunning) {
       this.isRunning = true;
       requestAnimationFrame(this.tick);
@@ -16,7 +15,6 @@ class Ticker {
 
   unsubscribe(fn) {
     this.subscribers.delete(fn);
-    console.log(this.subscribers);
     if (this.subscribers.size === 0) {
       this.isRunning = false;
     }

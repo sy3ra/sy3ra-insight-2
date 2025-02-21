@@ -31,26 +31,7 @@ export class ChartTest {
       // 차트 초기화
       this.chart = new Chart(this.chartCtx, {
         type: "candlestick",
-        data: {
-          labels: data.map((item) => item.x),
-          datasets: [
-            {
-              label: "BTC/USDT",
-              data: data,
-              borderColor: "rgba(0, 0, 0, 1)",
-              borderWidth: 1,
-              barThickness: "flex",
-              backgroundColor: {
-                up: chartColors.upBody,
-                down: chartColors.downBody,
-              },
-              borderColor: {
-                up: chartColors.upBorder,
-                down: chartColors.downBorder,
-              },
-            },
-          ],
-        },
+        data: data,
         options: {
           maintainAspectRatio: false,
           animation: {
@@ -68,22 +49,46 @@ export class ChartTest {
                 },
               },
               ticks: {
+                color: "#d4d4d4",
                 autoSkip: true,
                 source: "auto",
                 display: true, // x축 레이블 표시
+              },
+              grid: {
+                color: "rgba(255, 255, 255, 0.1)",
+                display: true,
+                drawOnChartArea: true,
               },
             },
             y: {
               position: "right", // y축을 오른쪽에 표시
               beginAtZero: false,
               ticks: {
+                color: "#d4d4d4",
                 callback: function (value) {
                   return value.toFixed(2); // 소수점 2자리까지 표시
                 },
               },
+              grid: {
+                color: "rgba(255, 255, 255, 0.1)",
+                display: true,
+                drawOnChartArea: true,
+              },
             },
           },
           plugins: {
+            title: {
+              display: false,
+              fullSize: true,
+            },
+            legend: {
+              display: false,
+            },
+            tooltip: {
+              enabled: true,
+              intersect: true,
+              mode: "point",
+            },
             zoom: {
               zoom: {
                 wheel: {
@@ -132,9 +137,9 @@ export class ChartTest {
   }
 
   updateMousePosition(x, y) {
-    this.x = x;
-    this.y = y;
-    this.crosshair.updatePosition(x, y);
+    if (this.crosshair && typeof this.crosshair.updatePosition === "function") {
+      this.crosshair.updatePosition(x, y);
+    }
   }
 
   mouseLeave() {
@@ -161,8 +166,26 @@ export class ChartTest {
       const data = response.data;
 
       const formattedData = this.xohlcvFormatData(data);
-      console.log(formattedData);
-      return formattedData;
+
+      const chartData = {
+        labels: formattedData.map((item) => item.x),
+        datasets: [
+          {
+            label: "BTC/USDT Chart",
+            data: formattedData,
+            backgroundColors: {
+              up: chartColors.upBody,
+              down: chartColors.downBody,
+            },
+            borderColors: {
+              up: chartColors.upBorder,
+              down: chartColors.downBorder,
+            },
+          },
+        ],
+      };
+
+      return chartData;
     } catch (error) {
       console.error("데이터를 가져오는 중 오류 발생:", error);
       return []; // 빈 배열 반환

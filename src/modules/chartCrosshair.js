@@ -49,6 +49,9 @@ export class ChartCrosshair {
     ctx.strokeStyle = "rgba(255, 255, 255, 0.49)";
     ctx.lineWidth = 1;
 
+    // 선 스타일을 점선으로 설정
+    ctx.setLineDash([6, 6]);
+
     // 수직선 그리기
     ctx.beginPath();
     ctx.moveTo(x, this.chartArea.top);
@@ -60,6 +63,9 @@ export class ChartCrosshair {
     ctx.moveTo(this.chartArea.left, y);
     ctx.lineTo(this.chartArea.right, y);
     ctx.stroke();
+
+    // 선 스타일 초기화 (필요시)
+    ctx.setLineDash([]);
 
     // 이전 위치 업데이트
     this.previousX = x;
