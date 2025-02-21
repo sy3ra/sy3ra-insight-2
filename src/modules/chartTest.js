@@ -6,6 +6,8 @@ import {
 import "chartjs-adapter-date-fns";
 import zoomPlugin from "chartjs-plugin-zoom";
 import { ChartCrosshair } from "./chartCrosshair";
+import { chartColors } from "./theme";
+import axios from "axios";
 // Chart.js에 필요한 요소 등록
 Chart.register(
   ...registerables,
@@ -15,95 +17,117 @@ Chart.register(
 );
 
 export class ChartTest {
-  constructor(data, chartCtx, crosshairCtx) {
-    this.data = this.candleData(data);
+  constructor(chartCtx, crosshairCtx) {
     this.chartCtx = chartCtx;
     this.crosshairCtx = crosshairCtx;
-
-    this.chart = new Chart(this.chartCtx, {
-      type: "candlestick",
-      data: {
-        datasets: [
-          {
-            label: "BTC/USDT",
-            data: this.data,
-            borderColor: "rgba(0, 0, 0, 1)",
-            borderWidth: 1,
-            // 캔들 하나의 폭을 10픽셀로 고정 (필요에 따라 값 조정)
-            barThickness: "flex",
-            // 또는 최대 폭을 제한하고 싶다면 다음 옵션도 사용 가능
-            // maxBarThickness: 10,
-          },
-        ],
-      },
-      options: {
-        maintainAspectRatio: false,
-        animation: {
-          duration: 0,
-        },
-        responsive: false,
-        scales: {
-          x: {
-            type: "time",
-            time: {
-              unit: "hour",
-              tooltipFormat: "MM/dd HH:mm",
-              displayFormats: {
-                hour: "MM/dd HH:mm",
-              },
-            },
-            ticks: {
-              autoSkip: true,
-              source: "auto",
-              display: true, // x축 레이블 표시
-            },
-          },
-          y: {
-            position: "right", // y축을 오른쪽에 표시
-            beginAtZero: false,
-            ticks: {
-              callback: function (value) {
-                return value.toFixed(2); // 소수점 2자리까지 표시
-              },
-            },
-          },
-        },
-        plugins: {
-          zoom: {
-            zoom: {
-              wheel: {
-                enabled: true,
-                speed: 0.01, // 줌 민감도 조절 (값이 작을수록 덜 민감)
-              },
-              pinch: {
-                enabled: true,
-                speed: 0.01, // 줌 민감도 조절 (값이 작을수록 덜 민감)
-              },
-              mode: "xy",
-              limits: {
-                x: { min: "original", max: "original" }, // x축 줌 한계 설정
-                y: { min: "original", max: "original" }, // y축 줌 한계 설정
-              },
-            },
-            pan: {
-              enabled: true,
-              mode: "xy",
-            },
-          },
-        },
-      },
-    });
-
-    this.crosshair = new ChartCrosshair(this.crosshairCtx, this.chart);
+    this.initialize();
   }
 
-  candleData(data) {
+  async initialize() {
+    try {
+      // 데이터 가져오기
+      const data = await this.handleFetchData();
+
+      // 차트 초기화
+      this.chart = new Chart(this.chartCtx, {
+        type: "candlestick",
+        data: {
+          labels: data.map((item) => item.x),
+          datasets: [
+            {
+              label: "BTC/USDT",
+              data: data,
+              borderColor: "rgba(0, 0, 0, 1)",
+              borderWidth: 1,
+              barThickness: "flex",
+              backgroundColor: {
+                up: chartColors.upBody,
+                down: chartColors.downBody,
+              },
+              borderColor: {
+                up: chartColors.upBorder,
+                down: chartColors.downBorder,
+              },
+            },
+          ],
+        },
+        options: {
+          maintainAspectRatio: false,
+          animation: {
+            duration: 0,
+          },
+          responsive: false,
+          scales: {
+            x: {
+              type: "time",
+              time: {
+                unit: "hour",
+                tooltipFormat: "MM/dd HH:mm",
+                displayFormats: {
+                  hour: "MM/dd HH:mm",
+                },
+              },
+              ticks: {
+                autoSkip: true,
+                source: "auto",
+                display: true, // x축 레이블 표시
+              },
+            },
+            y: {
+              position: "right", // y축을 오른쪽에 표시
+              beginAtZero: false,
+              ticks: {
+                callback: function (value) {
+                  return value.toFixed(2); // 소수점 2자리까지 표시
+                },
+              },
+            },
+          },
+          plugins: {
+            zoom: {
+              zoom: {
+                wheel: {
+                  enabled: true,
+                  speed: 0.1, // 줌 민감도 조절 (값이 작을수록 덜 민감)
+                },
+                pinch: {
+                  enabled: true,
+                  speed: 0.1, // 줌 민감도 조절 (값이 작을수록 덜 민감)
+                },
+                mode: "xy",
+                limits: {
+                  x: { min: "original", max: "original" }, // x축 줌 한계 설정
+                  y: { min: "original", max: "original" }, // y축 줌 한계 설정
+                },
+              },
+              pan: {
+                enabled: true,
+                mode: "xy",
+              },
+            },
+          },
+        },
+      });
+
+      // 크로스헤어 초기화
+      this.crosshair = new ChartCrosshair(this.crosshairCtx, this.chart);
+
+      // 차트 렌더링
+      this.render();
+    } catch (error) {
+      console.error("차트 초기화 중 오류 발생:", error);
+    }
+  }
+
+  // 데이터 포맷팅 함수
+  xohlcvFormatData(data) {
     return data.map((item) => ({
-      x: new Date(item.openTime), // x키로 시간 데이터를 지정
-      o: item.open,
-      h: item.high,
-      l: item.low,
-      c: item.close,
+      x: item[0],
+      o: item[1],
+      h: item[2],
+      l: item[3],
+      c: item[4],
+      v: item[5],
     }));
   }
 
@@ -118,7 +142,30 @@ export class ChartTest {
   }
 
   render() {
-    this.chart.resize();
-    this.chart.update();
+    if (this.chart) {
+      this.chart.resize();
+      this.chart.update();
+    }
+  }
+
+  async handleFetchData() {
+    try {
+      const response = await axios.get("http://localhost:3000/api/getBtcData", {
+        params: {
+          symbol: "BTCUSDT",
+          interval: "1h",
+          limit: 100,
+        },
+      });
+
+      const data = response.data;
+
+      const formattedData = this.xohlcvFormatData(data);
+      console.log(formattedData);
+      return formattedData;
+    } catch (error) {
+      console.error("데이터를 가져오는 중 오류 발생:", error);
+      return []; // 빈 배열 반환
+    }
   }
 }

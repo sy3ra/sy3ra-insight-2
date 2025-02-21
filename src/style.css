@@ -25,6 +25,12 @@ div {
   height: 100%;
 }
 
+#mainCanvas {
+  position: relative;
+  width: 500px;
+  height: 500px;
+}
+
 canvas {
   position: absolute;
   top: 0;
