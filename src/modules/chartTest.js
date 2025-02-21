@@ -161,7 +161,6 @@ export class ChartTest {
       c: item[4], //close
       v: item[5], //volume
     }));
-    console.log("formattedData", formattedData);
     const chartData = {
       labels: formattedData.map((item) => item.x),
       datasets: [
@@ -179,7 +178,6 @@ export class ChartTest {
         },
       ],
     };
-    console.log("chartData", chartData);
     return chartData;
   }
 
@@ -234,18 +232,7 @@ export class ChartTest {
       const data = response.data;
       const formattedData = this.xohlcvFormatData(data);
 
-      // 일반 배열로 데이터 추가
-      this.labelsStack = [...formattedData.labels, ...this.labelsStack];
-      this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
-
-      this.chart.data.labels = this.labelsStack;
-      this.chart.data.datasets[0].data = this.dataStack;
-
-      this.earliestX = this.labelsStack[0];
-      this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
-      this.chart.update();
-
-      return;
+      return formattedData;
     } catch (error) {
       console.error("데이터를 가져오는 중 오류 발생:", error);
       return [];
@@ -268,7 +255,17 @@ export class ChartTest {
     this.showLoadingSpinner();
 
     // 데이터 가져오기 완료 후 500ms 후에 로직 실행 (디바운스)
-    await this.handleFetchMoreData();
+    const formattedData = await this.handleFetchMoreData();
+    // 일반 배열로 데이터 추가
+    this.labelsStack = [...formattedData.labels, ...this.labelsStack];
+    this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
+
+    this.chart.data.labels = this.labelsStack;
+    this.chart.data.datasets[0].data = this.dataStack;
+
+    this.earliestX = this.labelsStack[0];
+    this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
+    this.chart.update();
 
     this.debounceTimer = setTimeout(() => {
       this.hideLoadingSpinner();
