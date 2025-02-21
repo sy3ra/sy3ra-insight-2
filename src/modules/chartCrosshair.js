@@ -23,18 +23,13 @@ export class ChartCrosshair {
   }
 
   draw() {
-    // console.log(this.ctx.canvas.width, this.ctx.canvas.height);
     const { ctx, x, y, previousX, previousY } = this;
-    // console.log(x, y);
-
     if (x === previousX && y === previousY) {
       return;
     }
 
     // 캔버스를 지우고 새로 그리기
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-    // console.log(this.chartArea);
     // chartArea 밖에 있는 경우 리턴
     if (
       x < this.chartArea.left ||

@@ -20,13 +20,10 @@ export class ChartTest {
   constructor(chartCtx, crosshairCtx) {
     this.chartCtx = chartCtx;
     this.crosshairCtx = crosshairCtx;
-    // React에서 사용하던 isLoadingRef 대신 바닐라 JS에서는 this.isLoading 프로퍼티 사용
     this.isLoading = false;
     this.earliestX = null;
-    // 클래스 프로퍼티 영역에 디바운스 타이머와 스피너 참조 추가
     this.debounceTimer = null;
     this.spinner = null;
-    // 일반 배열로 대체
     this.labelsStack = [];
     this.dataStack = [];
     this.initialize();
@@ -157,13 +154,14 @@ export class ChartTest {
   // 데이터 포맷팅 함수
   xohlcvFormatData(data) {
     const formattedData = data.map((item) => ({
-      x: item[0],
-      o: item[1],
-      h: item[2],
-      l: item[3],
-      c: item[4],
-      v: item[5],
+      x: item[0], //openTime
+      o: item[1], //open
+      h: item[2], //high
+      l: item[3], //low
+      c: item[4], //close
+      v: item[5], //volume
     }));
+    console.log("formattedData", formattedData);
     const chartData = {
       labels: formattedData.map((item) => item.x),
       datasets: [
@@ -181,6 +179,7 @@ export class ChartTest {
         },
       ],
     };
+    console.log("chartData", chartData);
     return chartData;
   }
 

@@ -1,5 +1,4 @@
 import { ChartTest } from "./modules/chartTest.js";
-import axios from "axios";
 
 class MainCanvas {
   constructor(parent) {

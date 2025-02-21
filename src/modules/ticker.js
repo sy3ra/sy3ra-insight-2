@@ -22,8 +22,6 @@ class Ticker {
 
   tick(timestamp) {
     if (!this.isRunning) return;
-    // console.log(this.subscribers);
-    // 각 구독자의 업데이트 함수 호출
     this.subscribers.forEach((fn) => fn(timestamp));
     requestAnimationFrame(this.tick);
   }
