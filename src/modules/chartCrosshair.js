@@ -13,15 +13,6 @@ export class ChartCrosshair {
     tickerInstance.subscribe(this.draw.bind(this));
   }
 
-  updatePosition(x, y) {
-    this.x = x;
-    this.y = y;
-  }
-
-  mouseLeave() {
-    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
-  }
-
   draw() {
     const { ctx, x, y, previousX, previousY } = this;
     if (x === previousX && y === previousY) {
@@ -65,5 +56,14 @@ export class ChartCrosshair {
     // 이전 위치 업데이트
     this.previousX = x;
     this.previousY = y;
+  }
+
+  updatePosition(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  mouseLeave() {
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
   }
 }

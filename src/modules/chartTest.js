@@ -181,25 +181,6 @@ export class ChartTest {
     return chartData;
   }
 
-  updateMousePosition(x, y) {
-    if (this.crosshair && typeof this.crosshair.updatePosition === "function") {
-      this.crosshair.updatePosition(x, y);
-    }
-  }
-
-  mouseLeave() {
-    if (this.crosshair) {
-      this.crosshair.mouseLeave();
-    }
-  }
-
-  render() {
-    if (this.chart) {
-      this.chart.resize();
-      this.chart.update();
-    }
-  }
-
   async handleFetchData() {
     try {
       const response = await axios.get("http://localhost:3000/api/getBtcData", {
@@ -308,6 +289,25 @@ export class ChartTest {
   hideLoadingSpinner() {
     if (this.spinner) {
       this.spinner.style.display = "none";
+    }
+  }
+
+  updateMousePosition(x, y) {
+    if (this.crosshair && typeof this.crosshair.updatePosition === "function") {
+      this.crosshair.updatePosition(x, y);
+    }
+  }
+
+  mouseLeave() {
+    if (this.crosshair) {
+      this.crosshair.mouseLeave();
+    }
+  }
+
+  render() {
+    if (this.chart) {
+      this.chart.resize();
+      this.chart.update();
     }
   }
 }
