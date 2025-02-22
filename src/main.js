@@ -1,4 +1,5 @@
 import { ChartTest } from "./modules/chartTest.js";
+import { createToolPanel } from "./modules/toolPanel.js";
 
 class MainCanvas {
   constructor(parent) {
@@ -28,8 +29,8 @@ class MainCanvas {
     parent.appendChild(this.drawingCanvas);
 
     // 스테이지 크기
-    this.stageWidth = document.body.clientWidth;
-    this.stageHeight = document.body.clientHeight;
+    this.stageWidth = parent.clientWidth;
+    this.stageHeight = parent.clientHeight;
 
     //차트 인스턴스 생성
     this.chartTestInstance = new ChartTest(this.chartCtx, this.crosshairCtx);
@@ -51,10 +52,10 @@ class MainCanvas {
   }
 
   resize() {
-    this.stageWidth = this.parent.clientWidth;
-    this.stageHeight = this.parent.clientHeight;
+    this.stageWidth = Math.round(this.parent.clientWidth);
+    this.stageHeight = Math.round(this.parent.clientHeight);
 
-    // 캔버스 크기 설정
+    // 캔버스 크기 설정 (정수 픽셀값 사용)
     this.chartCanvas.width = this.stageWidth * 2;
     this.chartCanvas.height = this.stageHeight * 2;
 
@@ -73,7 +74,7 @@ class MainCanvas {
     this.overlayCtx.scale(2, 2);
     this.drawingCtx.scale(2, 2);
 
-    // 차트를 재렌더링 (ChartTest 클래스에 render() 같은 메서드가 필요)
+    // 차트를 재렌더링
     if (
       this.chartTestInstance &&
       typeof this.chartTestInstance.render === "function"
@@ -99,6 +100,8 @@ class MainCanvas {
 }
 
 window.onload = () => {
+  const container = document.querySelector("#toolPanel");
+  createToolPanel(container);
   const mainCanvasParent = document.querySelector("#mainCanvas");
   new MainCanvas(mainCanvasParent);
 };

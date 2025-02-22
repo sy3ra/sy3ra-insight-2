@@ -52,33 +52,42 @@ export class ChartTest {
             x: {
               type: "time",
               time: {
-                unit: "hour",
-                tooltipFormat: "MM/dd HH:mm",
+                tooltipFormat: "MM/dd",
                 displayFormats: {
-                  hour: "MM/dd HH:mm",
+                  millisecond: "HH:mm:ss.SSS",
+                  second: "HH:mm:ss",
+                  minute: "HH:mm",
+                  hour: "MM/dd",
+                  day: "MM/dd",
+                  week: "MM/dd",
+                  month: "MM/dd",
+                  quarter: "MM/dd",
+                  year: "MM/dd",
                 },
               },
               ticks: {
                 color: "#d4d4d4",
                 autoSkip: true,
+                autoSkipPadding: 100,
                 source: "auto",
-                display: true, // x축 레이블 표시
+                display: true,
               },
               grid: {
                 color: "rgba(255, 255, 255, 0.1)",
                 display: true,
                 drawOnChartArea: true,
+                drawTicks: false,
               },
               min: this.earliestX,
               max: latestX,
             },
             y: {
-              position: "right", // y축을 오른쪽에 표시
+              position: "right",
               beginAtZero: false,
               ticks: {
                 color: "#d4d4d4",
                 callback: function (value) {
-                  return value.toFixed(2); // 소수점 2자리까지 표시
+                  return value.toFixed(2);
                 },
               },
               grid: {
@@ -105,6 +114,7 @@ export class ChartTest {
               limits: {
                 x: {
                   min: this.earliestX,
+                  max: latestX,
                 },
               },
               pan: {
@@ -120,16 +130,16 @@ export class ChartTest {
               zoom: {
                 wheel: {
                   enabled: true,
-                  speed: 0.1, // 줌 민감도 조절 (값이 작을수록 덜 민감)
+                  speed: 0.1,
                 },
                 pinch: {
                   enabled: true,
-                  speed: 0.1, // 줌 민감도 조절 (값이 작을수록 덜 민감)
+                  speed: 0.1,
                 },
                 mode: "xy",
                 limits: {
-                  x: { min: this.earliestX, max: latestX }, // x축 줌 한계 설정
-                  y: { min: "original", max: "original" }, // y축 줌 한계 설정
+                  x: { min: this.earliestX, max: latestX },
+                  y: { min: "original", max: "original" },
                 },
               },
             },
@@ -186,7 +196,7 @@ export class ChartTest {
       const response = await axios.get("http://localhost:3000/api/getBtcData", {
         params: {
           symbol: "BTCUSDT",
-          interval: "1h",
+          interval: "1d",
           limit: 100,
         },
       });
@@ -205,7 +215,7 @@ export class ChartTest {
       const response = await axios.get("http://localhost:3000/api/getBtcData", {
         params: {
           symbol: "BTCUSDT",
-          interval: "1h",
+          interval: "1d",
           limit: 100,
           endTime: this.chart.data.labels[0] - 1000 * 60 * 60,
         },
@@ -246,7 +256,7 @@ export class ChartTest {
 
     this.earliestX = this.labelsStack[0];
     this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
-    this.chart.update();
+    this.chart.update("none");
 
     this.debounceTimer = setTimeout(() => {
       this.hideLoadingSpinner();
@@ -307,7 +317,7 @@ export class ChartTest {
   render() {
     if (this.chart) {
       this.chart.resize();
-      this.chart.update();
+      this.chart.update("none");
     }
   }
 }

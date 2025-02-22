@@ -7,16 +7,28 @@
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
 }
 
+:root {
+  --bg-panel-color: #1a2324;
+  --bg-btn-color: #2d3c3d;
+  --bg-btn-selected-color: #273537;
+  --btn-text-color: #567176;
+  --bg-color: #313939;
+}
+
 html {
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  background-color: #f0f0f0;
 }
 
 body {
   width: 100%;
-  height: 100%;
+  height: 100vh;
   overflow: hidden;
-  background-color: #000;
+  background-color: var(--bg-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 div {
@@ -26,17 +38,19 @@ div {
 }
 
 #mainCanvas {
+  background-color: var(--bg-panel-color);
   position: relative;
-  width: 1000px;
-  height: 700px;
+  border-radius: 0.5rem;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 canvas {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 canvas#overlayCanvas {
@@ -56,4 +70,51 @@ canvas#chartCanvas {
 canvas#drawingCanvas {
   z-index: 30;
   pointer-events: none;
+}
+
+#mainContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+#chartSelectPanel {
+  width: 100%;
+  height: 3rem;
+  margin-bottom: 0.25rem;
+  background-color: var(--bg-panel-color);
+}
+
+#chartPanel {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+}
+
+#toolPanel {
+  width: 3.5rem; /* 도구 선택 패널의 너비 */
+  background-color: var(--bg-panel-color);
+  color: var(--btn-text-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 0 0.5rem 0.5rem 0;
+  margin-right: 0.25rem;
+}
+
+.tool-panel button {
+  /* margin: 0.25rem 0; */
+  /* padding: 0.5rem; */
+  width: 1.5rem;
+  height: 1.5rem;
+  background-color: #555;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.tool-panel button:hover {
+  background-color: #777;
 }
