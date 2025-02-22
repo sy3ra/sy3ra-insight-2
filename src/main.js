@@ -1,5 +1,5 @@
 import { ChartTest } from "./modules/chartTest.js";
-import { createToolPanel } from "./modules/toolPanel.js";
+import { DrawingTool } from "./modules/drawingTool.js";
 
 class MainCanvas {
   constructor(parent) {
@@ -34,26 +34,37 @@ class MainCanvas {
 
     //차트 인스턴스 생성
     this.chartTestInstance = new ChartTest(this.chartCtx, this.crosshairCtx);
+
+    // 드로잉 인스턴스
+    const toolPanelContainer = document.querySelector("#toolPanel");
+    this.drawingInstance = new DrawingTool(
+      toolPanelContainer,
+      this.chartTestInstance,
+      this.drawingCanvas,
+      this.overlayCanvas
+    );
+    this.drawingInstance.createToolPanel();
+
     this.resize();
 
-    // 차트 캔버스 마우스 이벤트 핸들러
+    // 마우스 좌표 구독자를 저장할 셋 생성
+    this.mouseMoveListeners = new Set();
+
+    // 이벤트 리스너 등록 (여러 이벤트에 대해 동일한 핸들러 호출)
     const events = ["mousemove", "mousedown", "mouseup", "click"];
     events.forEach((event) => {
       this.chartCanvas.addEventListener(event, this.handleMouseMove.bind(this));
     });
-
     this.chartCanvas.addEventListener(
       "mouseleave",
       this.handleMouseLeave.bind(this)
     );
-
-    //resize 이벤트 리스너
     window.addEventListener("resize", this.resize.bind(this), false);
   }
 
   resize() {
-    this.stageWidth = Math.round(this.parent.clientWidth);
-    this.stageHeight = Math.round(this.parent.clientHeight);
+    this.stageWidth = this.parent.clientWidth;
+    this.stageHeight = this.parent.clientHeight;
 
     // 캔버스 크기 설정 (정수 픽셀값 사용)
     this.chartCanvas.width = this.stageWidth * 2;
@@ -83,15 +94,34 @@ class MainCanvas {
     }
   }
 
+  // 구독자 추가 메서드
+  addMouseMoveListener(listener) {
+    this.mouseMoveListeners.add(listener);
+  }
+
+  // 구독자 제거 메서드
+  removeMouseMoveListener(listener) {
+    this.mouseMoveListeners.delete(listener);
+  }
+
   handleMouseMove(event) {
     const rect = this.chartCanvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    // console.log(x, y);
+
+    // 기존 동작: 차트 인스턴스 업데이트
     if (this.chartTestInstance) {
       this.chartTestInstance.updateMousePosition(x, y);
     }
+
+    // 구독된 모든 리스너에게 마우스 좌표 전달
+    this.mouseMoveListeners.forEach((listener) => {
+      if (typeof listener === "function") {
+        listener(x, y);
+      }
+    });
   }
+
   handleMouseLeave(event) {
     if (this.chartTestInstance) {
       this.chartTestInstance.mouseLeave();
@@ -100,8 +130,6 @@ class MainCanvas {
 }
 
 window.onload = () => {
-  const container = document.querySelector("#toolPanel");
-  createToolPanel(container);
   const mainCanvasParent = document.querySelector("#mainCanvas");
-  new MainCanvas(mainCanvasParent);
+  window.mainCanvas = new MainCanvas(mainCanvasParent);
 };
