@@ -1,3 +1,5 @@
+import { tickerInstance } from "./ticker.js";
+
 export class DrawingTool {
   constructor(container, chartCanvas, drawingCanvas, overlayCanvas) {
     this.container = container;
@@ -15,6 +17,7 @@ export class DrawingTool {
     this.startY = null;
     this.endX = null;
     this.endY = null;
+    this.finishDrawLineHandler = null;
   }
 
   createToolPanel() {
@@ -79,8 +82,9 @@ export class DrawingTool {
     this.xPixel = xPixel;
     this.yPixel = yPixel;
     // 필요한 추가 작업 수행 (예: 실시간 그리기 미리보기)
-    if (this.clickCount === 1) {
-      this.finishDrawLine();
+    if (this.clickCount === 1 && !this.finishDrawLineHandler) {
+      this.finishDrawLineHandler = this.finishDrawLine.bind(this);
+      tickerInstance.subscribe(this.finishDrawLineHandler);
     }
   }
 
@@ -134,6 +138,8 @@ export class DrawingTool {
     this.drawingCtx.strokeStyle = "white";
     this.drawingCtx.stroke();
     if (this.clickCount === 2) {
+      tickerInstance.unsubscribe(this.finishDrawLineHandler);
+      this.finishDrawLineHandler = null;
       this.finishDraw();
     }
   }
