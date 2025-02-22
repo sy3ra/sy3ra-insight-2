@@ -33,8 +33,6 @@ export class ChartCrosshair {
 
     // 선 스타일을 점선으로 설정
     ctx.setLineDash([6, 6]);
-    console.log(x, y);
-    console.log(this.chartArea.top, this.chartArea.bottom);
     // 수직선 그리기
     ctx.beginPath();
     ctx.moveTo(x, 0);

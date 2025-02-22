@@ -89,11 +89,15 @@ export class ChartTest {
                 callback: function (value) {
                   return value.toFixed(2);
                 },
+                padding: 8,
               },
               grid: {
                 color: "rgba(255, 255, 255, 0.1)",
                 display: true,
                 drawOnChartArea: true,
+              },
+              afterFit: function (scaleInstance) {
+                scaleInstance.width = 90; // y축 레이블 영역의 너비 고정
               },
             },
           },
@@ -136,7 +140,11 @@ export class ChartTest {
                   enabled: true,
                   speed: 0.1,
                 },
-                mode: "xy",
+                mode: "x",
+                onZoomStart: ({ chart, event }) => {
+                  const mode = event.ctrlKey || event.metaKey ? "y" : "x";
+                  chart.options.plugins.zoom.zoom.mode = mode;
+                },
                 limits: {
                   x: { min: this.earliestX, max: latestX },
                   y: { min: "original", max: "original" },
