@@ -49,12 +49,17 @@ class MainCanvas {
 
     // 마우스 좌표 구독자를 저장할 셋 생성
     this.mouseMoveListeners = new Set();
+    // 마우스 클릭 구독자를 저장할 셋 생성
+    this.clickListeners = new Set();
 
-    // 이벤트 리스너 등록 (여러 이벤트에 대해 동일한 핸들러 호출)
-    const events = ["mousemove", "mousedown", "mouseup", "click"];
-    events.forEach((event) => {
+    // 마우스 움직임 관련 이벤트 리스너 등록 (mousemove, mousedown, mouseup)
+    const mouseMoveEvents = ["mousemove", "mousedown", "mouseup"];
+    mouseMoveEvents.forEach((event) => {
       this.chartCanvas.addEventListener(event, this.handleMouseMove.bind(this));
     });
+    // 클릭 이벤트는 별도의 핸들러에 등록
+    this.chartCanvas.addEventListener("click", this.handleClick.bind(this));
+
     this.chartCanvas.addEventListener(
       "mouseleave",
       this.handleMouseLeave.bind(this)
@@ -94,14 +99,24 @@ class MainCanvas {
     }
   }
 
-  // 구독자 추가 메서드
+  // 마우스 움직임 구독자 추가 메서드
   addMouseMoveListener(listener) {
     this.mouseMoveListeners.add(listener);
   }
 
-  // 구독자 제거 메서드
+  // 마우스 움직임 구독자 제거 메서드
   removeMouseMoveListener(listener) {
     this.mouseMoveListeners.delete(listener);
+  }
+
+  // 마우스 클릭 구독자 추가 메서드
+  addMouseClickListener(listener) {
+    this.clickListeners.add(listener);
+  }
+
+  // 마우스 클릭 구독자 제거 메서드
+  removeMouseClickListener(listener) {
+    this.clickListeners.delete(listener);
   }
 
   handleMouseMove(event) {
@@ -114,8 +129,21 @@ class MainCanvas {
       this.chartTestInstance.updateMousePosition(x, y);
     }
 
-    // 구독된 모든 리스너에게 마우스 좌표 전달
+    // 구독된 모든 마우스 움직임 리스너에게 좌표 전달
     this.mouseMoveListeners.forEach((listener) => {
+      if (typeof listener === "function") {
+        listener(x, y);
+      }
+    });
+  }
+
+  handleClick(event) {
+    const rect = this.chartCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    // 구독된 모든 클릭 리스너에게 좌표 전달
+    this.clickListeners.forEach((listener) => {
       if (typeof listener === "function") {
         listener(x, y);
       }
