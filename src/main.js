@@ -4,6 +4,10 @@ import { DrawingTool } from "./modules/drawingTool.js";
 class MainCanvas {
   constructor(parent) {
     this.parent = parent;
+
+    //오버레이 배열
+    this.overlaysArray = [];
+
     //차트 캔버스
     this.chartCanvas = document.createElement("canvas");
     this.chartCanvas.id = "chartCanvas";
@@ -33,7 +37,11 @@ class MainCanvas {
     this.stageHeight = parent.clientHeight;
 
     //차트 인스턴스 생성
-    this.chartTestInstance = new ChartTest(this.chartCtx, this.crosshairCtx);
+    this.chartTestInstance = new ChartTest(
+      this.chartCtx,
+      this.crosshairCtx,
+      this.overlayCtx
+    );
 
     // 드로잉 인스턴스
     const toolPanelContainer = document.querySelector("#toolPanel");
@@ -154,6 +162,20 @@ class MainCanvas {
     if (this.chartTestInstance) {
       this.chartTestInstance.mouseLeave();
     }
+  }
+
+  storeOverlay(startX, startY, endX, endY) {
+    this.overlaysArray.push({
+      index: this.overlaysArray.length,
+      startX,
+      startY,
+      endX,
+      endY,
+    });
+    console.log(this.overlaysArray);
+  }
+  getOverlaysArray() {
+    return this.overlaysArray;
   }
 }
 

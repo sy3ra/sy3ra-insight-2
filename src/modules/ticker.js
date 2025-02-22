@@ -14,6 +14,7 @@ class Ticker {
   }
 
   unsubscribe(fn) {
+    console.log(fn);
     this.subscribers.delete(fn);
     if (this.subscribers.size === 0) {
       this.isRunning = false;

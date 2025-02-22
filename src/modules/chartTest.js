@@ -8,6 +8,7 @@ import zoomPlugin from "chartjs-plugin-zoom";
 import { ChartCrosshair } from "./chartCrosshair";
 import { chartColors } from "./theme";
 import axios from "axios";
+import { tickerInstance } from "./ticker";
 // Chart.js에 필요한 요소 등록
 Chart.register(
   ...registerables,
@@ -17,9 +18,10 @@ Chart.register(
 );
 
 export class ChartTest {
-  constructor(chartCtx, crosshairCtx) {
+  constructor(chartCtx, crosshairCtx, overlayCtx) {
     this.chartCtx = chartCtx;
     this.crosshairCtx = crosshairCtx;
+    this.overlayCtx = overlayCtx;
     this.isLoading = false;
     this.earliestX = null;
     this.debounceTimer = null;
@@ -27,6 +29,8 @@ export class ChartTest {
     this.labelsStack = [];
     this.dataStack = [];
     this.initialize();
+    this.boundUpdateOverlayCanvas = this.updateOverlayCanvas.bind(this);
+    this.isOverlaySubscribed = false;
   }
 
   async initialize() {
@@ -128,6 +132,18 @@ export class ChartTest {
                   const xMin = chart.scales.x.min;
                   if (xMin <= this.earliestX && !this.isLoading) {
                     this.debouncedCheckLimitReached();
+                  }
+                  if (!this.isOverlaySubscribed) {
+                    console.log("subscribe");
+                    tickerInstance.subscribe(this.boundUpdateOverlayCanvas);
+                    this.isOverlaySubscribed = true;
+                  }
+                },
+                onPanComplete: () => {
+                  if (this.isOverlaySubscribed) {
+                    console.log("unsubscribe");
+                    tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
+                    this.isOverlaySubscribed = false;
                   }
                 },
               },
@@ -307,6 +323,37 @@ export class ChartTest {
   hideLoadingSpinner() {
     if (this.spinner) {
       this.spinner.style.display = "none";
+    }
+  }
+
+  updateOverlayCanvas() {
+    // console.log("updateOverlayCanvas");
+    const chart = this.chart;
+    //패닝에 따라서 오버레이 캔버스 선분 이동
+    if (window.mainCanvas.getOverlaysArray().length > 0) {
+      this.overlayCtx.clearRect(
+        0,
+        0,
+        this.overlayCtx.canvas.width,
+        this.overlayCtx.canvas.height
+      );
+
+      const startX = window.mainCanvas.getOverlaysArray()[0].startX;
+      const startY = window.mainCanvas.getOverlaysArray()[0].startY;
+      const endX = window.mainCanvas.getOverlaysArray()[0].endX;
+      const endY = window.mainCanvas.getOverlaysArray()[0].endY;
+
+      const startXPixel = chart.scales.x.getPixelForValue(startX);
+      const endXPixel = chart.scales.x.getPixelForValue(endX);
+      const startYPixel = chart.scales.y.getPixelForValue(startY);
+      const endYPixel = chart.scales.y.getPixelForValue(endY);
+
+      this.overlayCtx.beginPath();
+      this.overlayCtx.moveTo(startXPixel, startYPixel);
+      this.overlayCtx.lineTo(endXPixel, endYPixel);
+      this.overlayCtx.lineWidth = 1;
+      this.overlayCtx.strokeStyle = "red";
+      this.overlayCtx.stroke();
     }
   }
 

@@ -103,6 +103,40 @@ export class DrawingTool {
     }
   }
 
+  //그리기 오버레이 캔버스에 저장
+  saveDrawingToOverlay() {
+    const start = { x: this.startX, y: this.startY };
+    const end = { x: this.endX, y: this.endY };
+
+    this.overlayCtx.beginPath();
+    this.overlayCtx.moveTo(start.x, start.y);
+    this.overlayCtx.lineTo(end.x, end.y);
+    this.overlayCtx.strokeStyle = "red";
+    this.overlayCtx.stroke();
+
+    const { x: startX, y: startY } = this.getValueForPixel(
+      this.startX,
+      this.startY
+    );
+    const { x: endX, y: endY } = this.getValueForPixel(this.endX, this.endY);
+
+    // console.log(111, startX, startY, endX, endY);
+    window.mainCanvas.storeOverlay(startX, startY, endX, endY);
+
+    this.drawingCtx.clearRect(
+      0,
+      0,
+      this.drawingCanvas.width,
+      this.drawingCanvas.height
+    );
+    this.xPixel = null;
+    this.yPixel = null;
+    this.startX = null;
+    this.startY = null;
+    this.endX = null;
+    this.endY = null;
+  }
+
   // drawLine 버튼이 클릭되면 클릭 횟수를 초기화하고 리스너를 등록
   clickDrawLine() {
     this.clickCount = 0;
@@ -141,6 +175,7 @@ export class DrawingTool {
       tickerInstance.unsubscribe(this.finishDrawLineHandler);
       this.finishDrawLineHandler = null;
       this.finishDraw();
+      this.saveDrawingToOverlay();
     }
   }
 
