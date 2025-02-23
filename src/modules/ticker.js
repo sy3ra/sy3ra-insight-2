@@ -14,7 +14,7 @@ class Ticker {
   }
 
   unsubscribe(fn) {
-    console.log(fn);
+    // console.log("구독취소dd");
     this.subscribers.delete(fn);
     if (this.subscribers.size === 0) {
       this.isRunning = false;
@@ -23,6 +23,7 @@ class Ticker {
 
   tick(timestamp) {
     if (!this.isRunning) return;
+    // console.log(this.subscribers.size);
     this.subscribers.forEach((fn) => fn(timestamp));
     requestAnimationFrame(this.tick);
   }

@@ -134,14 +134,14 @@ export class ChartTest {
                     this.debouncedCheckLimitReached();
                   }
                   if (!this.isOverlaySubscribed) {
-                    console.log("subscribe");
+                    // console.log("subscribe");
                     tickerInstance.subscribe(this.boundUpdateOverlayCanvas);
                     this.isOverlaySubscribed = true;
                   }
                 },
                 onPanComplete: () => {
                   if (this.isOverlaySubscribed) {
-                    console.log("unsubscribe");
+                    // console.log("unsubscribe");
                     tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
                     this.isOverlaySubscribed = false;
                   }
@@ -160,6 +160,20 @@ export class ChartTest {
                 onZoomStart: ({ chart, event }) => {
                   const mode = event.ctrlKey || event.metaKey ? "y" : "x";
                   chart.options.plugins.zoom.zoom.mode = mode;
+                },
+                onZoom: ({ chart }) => {
+                  if (!this.isOverlaySubscribed) {
+                    // console.log("subscribe");
+                    tickerInstance.subscribe(this.boundUpdateOverlayCanvas);
+                    this.isOverlaySubscribed = true;
+                  }
+                },
+                onZoomComplete: () => {
+                  if (this.isOverlaySubscribed) {
+                    // console.log("unsubscribe");
+                    tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
+                    this.isOverlaySubscribed = false;
+                  }
                 },
                 limits: {
                   x: { min: this.earliestX, max: latestX },

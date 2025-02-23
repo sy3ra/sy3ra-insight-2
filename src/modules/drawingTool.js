@@ -143,7 +143,7 @@ export class DrawingTool {
     this.addMouseMoveHandler();
   }
   startDrawLine() {
-    console.log("startDrawLine", this.xPixel, this.yPixel);
+    // console.log("startDrawLine", this.xPixel, this.yPixel);
     const { x: startX, y: startY } = this.getPixelForValue(
       this.xPixel,
       this.yPixel
@@ -152,7 +152,7 @@ export class DrawingTool {
     this.startY = startY;
   }
   finishDrawLine() {
-    console.log("finishDrawLine", this.xPixel, this.yPixel);
+    // console.log("finishDrawLine", this.xPixel, this.yPixel);
     const { x: endX, y: endY } = this.getPixelForValue(
       this.xPixel,
       this.yPixel

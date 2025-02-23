@@ -172,7 +172,7 @@ class MainCanvas {
       endX,
       endY,
     });
-    console.log(this.overlaysArray);
+    // console.log(this.overlaysArray);
   }
   getOverlaysArray() {
     return this.overlaysArray;

@@ -10,12 +10,17 @@ export class ChartCrosshair {
     this.previousY = null;
     this.chartArea = this.ctx.canvas.getBoundingClientRect();
     this.isVisible = false;
-
-    tickerInstance.subscribe(this.draw.bind(this));
+    this.boundDraw = this.draw.bind(this);
+    this.isSubscribed = false;
   }
 
   draw() {
     if (!this.isVisible) {
+      if (this.isSubscribed) {
+        // console.log("unsubscribe1");
+        tickerInstance.unsubscribe(this.boundDraw);
+        this.isSubscribed = false;
+      }
       return;
     }
 
@@ -51,9 +56,15 @@ export class ChartCrosshair {
   }
 
   updatePosition(x, y) {
+    // console.log("updatePosition");
     this.x = x;
     this.y = y;
     this.isVisible = true;
+    if (!this.isSubscribed) {
+      console.log("subscribe");
+      tickerInstance.subscribe(this.boundDraw);
+      this.isSubscribed = true;
+    }
   }
 
   mouseLeave() {
