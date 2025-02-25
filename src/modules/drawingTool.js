@@ -1,4 +1,5 @@
 import { tickerInstance } from "./ticker.js";
+import { EventTypes } from "../utilities/eventManager.js";
 
 export class DrawingTool {
   constructor(container, chartCanvas, drawingCanvas, overlayCanvas) {
@@ -8,20 +9,22 @@ export class DrawingTool {
     this.drawingCtx = drawingCanvas.getContext("2d");
     this.overlayCanvas = overlayCanvas;
     this.overlayCtx = overlayCanvas.getContext("2d");
-    this.mouseMoveHandler = null;
-    this.clickHandler = null;
-    this.currentPosition = { x: null, y: null }; // 현재 마우스 위치 (데이터 값)
-    this.points = {
-      start: { x: null, y: null }, // 시작점 (픽셀 값)
-      end: { x: null, y: null }, // 끝점 (픽셀 값)
-    };
-    this.clickCount = 0; // 클릭 횟수를 기록하기 위한 변수
-    this.finishDrawLineHandler = null;
-    this.isDrawingMode = false; // 그리기 모드 상태 추적
-    this.originalZoomPanState = null; // 원래 줌/패닝 상태 저장
-    this.currentTool = null; // 현재 선택된 도구 타입 저장
 
-    // 가능한 그리기 도구들
+    // 바인딩된 이벤트 핸들러 참조 저장
+    this.boundOnMouseMove = this.onMouseMove.bind(this);
+    this.boundOnMouseClick = this.onMouseClick.bind(this);
+
+    this.currentPosition = { x: null, y: null };
+    this.points = {
+      start: { x: null, y: null },
+      end: { x: null, y: null },
+    };
+    this.clickCount = 0;
+    this.finishDrawLineHandler = null;
+    this.isDrawingMode = false;
+    this.originalZoomPanState = null;
+    this.currentTool = null;
+
     this.tools = [
       { name: "Line", icon: "public/icons/line.svg" },
       { name: "ExtendedLine", icon: "public/icons/extended line.svg" },
@@ -29,6 +32,17 @@ export class DrawingTool {
       { name: "HorizontalLine", icon: "public/icons/horizontal line.svg" },
       { name: "VerticalLine", icon: "public/icons/vertical line.svg" },
     ];
+
+    // 커스텀 이벤트 리스너를 위한 맵 추가
+    this.eventListeners = new Map();
+    [
+      EventTypes.DRAWING_START,
+      EventTypes.DRAWING_MOVE,
+      EventTypes.DRAWING_END,
+      EventTypes.TOOL_CHANGE,
+    ].forEach((type) => {
+      this.eventListeners.set(type, new Set());
+    });
   }
 
   // UI 관련 메서드
@@ -57,6 +71,9 @@ export class DrawingTool {
     this.resetDrawingState();
     this.currentTool = toolType;
     this.enableDrawingMode();
+
+    // 이벤트 발생
+    this.dispatchEvent(EventTypes.TOOL_CHANGE, { tool: toolType });
   }
 
   // 그리기 상태 초기화
@@ -76,32 +93,29 @@ export class DrawingTool {
     this.setupMouseListeners(true);
   }
 
-  // 차트 줌/팬 상태 설정
+  // 차트 줌/팬 상태 설정 (더 명확한 구현)
   setChartZoomPanState(enabled) {
     if (!this.chartCtx.chart) return;
 
     const chart = this.chartCtx.chart;
+    const zoomOptions = chart.options.plugins.zoom;
 
     if (enabled) {
       // 원래 상태로 복원
       if (this.originalZoomPanState) {
-        chart.options.plugins.zoom.zoom.wheel.enabled =
-          this.originalZoomPanState.zoomEnabled;
-        chart.options.plugins.zoom.pan.enabled =
-          this.originalZoomPanState.panEnabled;
-
+        zoomOptions.zoom.wheel.enabled = this.originalZoomPanState.zoomEnabled;
+        zoomOptions.pan.enabled = this.originalZoomPanState.panEnabled;
         console.log("그리기 모드 비활성화: 줌/패닝 기능 복원됨");
       }
     } else {
       // 현재 상태 저장 및 비활성화
       this.originalZoomPanState = {
-        zoomEnabled: chart.options.plugins.zoom.zoom.wheel.enabled,
-        panEnabled: chart.options.plugins.zoom.pan.enabled,
+        zoomEnabled: zoomOptions.zoom.wheel.enabled,
+        panEnabled: zoomOptions.pan.enabled,
       };
 
-      chart.options.plugins.zoom.zoom.wheel.enabled = false;
-      chart.options.plugins.zoom.pan.enabled = false;
-
+      zoomOptions.zoom.wheel.enabled = false;
+      zoomOptions.pan.enabled = false;
       console.log("그리기 모드 활성화: 줌/패닝 기능 비활성화됨");
     }
 
@@ -117,41 +131,30 @@ export class DrawingTool {
 
     if (add) {
       // 리스너 추가
-      console.log("마우스 좌표 및 클릭 이벤트 구독 시작");
-
-      this.mouseMoveHandler = this.onMouseMove.bind(this);
-      this.clickHandler = this.onMouseClick.bind(this);
-
       if (typeof window.mainCanvas.addMouseMoveListener === "function") {
-        window.mainCanvas.addMouseMoveListener(this.mouseMoveHandler);
+        window.mainCanvas.addMouseMoveListener(this.boundOnMouseMove);
       } else {
         console.error("mouseMove 구독에 실패했습니다.");
       }
 
       if (typeof window.mainCanvas.addMouseClickListener === "function") {
-        window.mainCanvas.addMouseClickListener(this.clickHandler);
+        window.mainCanvas.addMouseClickListener(this.boundOnMouseClick);
       } else {
         console.error("mouseClick 구독에 실패했습니다.");
       }
+
+      console.log("마우스 이벤트 구독 시작");
     } else {
       // 리스너 제거
-      if (
-        this.mouseMoveHandler &&
-        typeof window.mainCanvas.removeMouseMoveListener === "function"
-      ) {
-        window.mainCanvas.removeMouseMoveListener(this.mouseMoveHandler);
-        this.mouseMoveHandler = null;
-        console.log("마우스 좌표 구독이 취소되었습니다.");
+      if (typeof window.mainCanvas.removeMouseMoveListener === "function") {
+        window.mainCanvas.removeMouseMoveListener(this.boundOnMouseMove);
       }
 
-      if (
-        this.clickHandler &&
-        typeof window.mainCanvas.removeMouseClickListener === "function"
-      ) {
-        window.mainCanvas.removeMouseClickListener(this.clickHandler);
-        this.clickHandler = null;
-        console.log("마우스 클릭 구독이 취소되었습니다.");
+      if (typeof window.mainCanvas.removeMouseClickListener === "function") {
+        window.mainCanvas.removeMouseClickListener(this.boundOnMouseClick);
       }
+
+      console.log("마우스 이벤트 구독 취소됨");
     }
   }
 
@@ -187,6 +190,12 @@ export class DrawingTool {
     );
     this.points.start.x = pixelX;
     this.points.start.y = pixelY;
+
+    // 이벤트 발생
+    this.dispatchEvent(EventTypes.DRAWING_START, {
+      x: this.currentPosition.x,
+      y: this.currentPosition.y,
+    });
   }
 
   finishDrawLine() {
@@ -292,5 +301,35 @@ export class DrawingTool {
       x: xScale.getPixelForValue(dataX),
       y: yScale.getPixelForValue(dataY),
     };
+  }
+
+  // 이벤트 발생 메서드
+  dispatchEvent(type, data) {
+    const listeners = this.eventListeners.get(type);
+    if (listeners) {
+      listeners.forEach((listener) => {
+        if (typeof listener === "function") {
+          listener(data);
+        }
+      });
+    }
+  }
+
+  // 이벤트 리스너 추가 메서드
+  addEventListener(type, listener) {
+    const listeners = this.eventListeners.get(type);
+    if (listeners) {
+      listeners.add(listener);
+    }
+    return this;
+  }
+
+  // 이벤트 리스너 제거 메서드
+  removeEventListener(type, listener) {
+    const listeners = this.eventListeners.get(type);
+    if (listeners) {
+      listeners.delete(listener);
+    }
+    return this;
   }
 }

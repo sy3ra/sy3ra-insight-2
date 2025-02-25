@@ -16,9 +16,6 @@ class MainCanvas {
     // 차트 및 드로잉 도구 초기화
     this.initializeComponents();
 
-    // 이벤트 매니저에 차트 인스턴스 설정
-    this.eventManager.chartInstance = this.chartTestInstance;
-
     // 스테이지 크기 설정
     this.resize();
 
@@ -73,6 +70,10 @@ class MainCanvas {
       this.drawingCanvas,
       this.overlayCanvas
     );
+
+    // EventManager에 차트 인스턴스 설정 - 드로잉 인스턴스 생성 후에 설정
+    this.eventManager.chartInstance = this.chartTestInstance;
+
     this.drawingInstance.createToolPanel();
   }
 

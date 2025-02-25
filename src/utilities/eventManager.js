@@ -8,6 +8,10 @@ export const EventTypes = {
   MOUSE_CLICK: "click",
   MOUSE_LEAVE: "mouseleave",
   RESIZE: "resize",
+  DRAWING_START: "drawing:start",
+  DRAWING_MOVE: "drawing:move",
+  DRAWING_END: "drawing:end",
+  TOOL_CHANGE: "drawing:tool-change",
 };
 
 export class EventManager {
