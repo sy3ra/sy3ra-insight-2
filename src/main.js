@@ -127,13 +127,14 @@ class MainCanvas {
   }
 
   // 오버레이 관리 메서드
-  storeOverlay(startX, startY, endX, endY) {
+  storeOverlay(startX, startY, endX, endY, lineType) {
     this.overlaysArray.push({
       index: this.overlaysArray.length,
       startX,
       startY,
       endX,
       endY,
+      lineType,
     });
   }
 
