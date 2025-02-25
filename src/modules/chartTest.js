@@ -1,4 +1,4 @@
-import { Chart, registerables } from "chart.js";
+import { Chart, defaults, registerables } from "chart.js";
 import {
   CandlestickController,
   CandlestickElement,
@@ -76,30 +76,6 @@ export class ChartTest {
 
       // 차트 렌더링
       this.render();
-
-      // 차트 캔버스에 이벤트 리스너 추가
-      this.chartCtx.canvas.addEventListener(
-        "wheel",
-        this.handleWheel.bind(this),
-        { passive: true }
-      );
-      this.chartCtx.canvas.addEventListener(
-        "touchstart",
-        this.handleTouchStart.bind(this),
-        { passive: true }
-      );
-      this.chartCtx.canvas.addEventListener(
-        "touchmove",
-        this.handleTouchMove.bind(this),
-        { passive: true }
-      );
-
-      // 마우스 이벤트 리스너 추가
-      this.chartCtx.canvas.addEventListener(
-        "mousemove",
-        this.handleMouseMove.bind(this),
-        { passive: true }
-      );
     } catch (error) {
       console.error("차트 초기화 중 오류 발생:", error);
     }
@@ -788,3 +764,16 @@ export class ChartTest {
     }, 150);
   }
 }
+
+// 테스트를 위한 임시 코드
+const originalAddEventListener = EventTarget.prototype.addEventListener;
+EventTarget.prototype.addEventListener = function (type, listener, options) {
+  // 이벤트 리스너 등록 시 옵션 로깅
+  if (
+    this instanceof HTMLCanvasElement &&
+    (type === "wheel" || type === "touchmove" || type === "mousemove")
+  ) {
+    console.log(`이벤트 리스너 등록: ${type}, 패시브: ${options?.passive}`);
+  }
+  return originalAddEventListener.call(this, type, listener, options);
+};

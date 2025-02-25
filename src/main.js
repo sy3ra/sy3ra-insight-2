@@ -159,31 +159,31 @@ window.onload = () => {
   const mainCanvasParent = document.querySelector("#mainCanvas");
   window.mainCanvas = new MainCanvas(mainCanvasParent);
 };
-// 줌 플러그인 기본값 변경
-Chart.defaults.plugins.zoom = {
-  ...Chart.defaults.plugins.zoom,
-  eventOptions: {
-    passive: true,
-  },
-  pan: {
-    ...Chart.defaults.plugins.zoom.pan,
-    eventOptions: {
-      passive: true,
-    },
-  },
-  zoom: {
-    ...Chart.defaults.plugins.zoom.zoom,
-    wheel: {
-      ...Chart.defaults.plugins.zoom.zoom?.wheel,
-      eventOptions: {
-        passive: true,
-      },
-    },
-    pinch: {
-      ...Chart.defaults.plugins.zoom.zoom?.pinch,
-      eventOptions: {
-        passive: true,
-      },
-    },
-  },
-};
+// // 줌 플러그인 기본값 변경
+// Chart.defaults.plugins.zoom = {
+//   ...Chart.defaults.plugins.zoom,
+//   eventOptions: {
+//     passive: true,
+//   },
+//   pan: {
+//     ...Chart.defaults.plugins.zoom.pan,
+//     eventOptions: {
+//       passive: true,
+//     },
+//   },
+//   zoom: {
+//     ...Chart.defaults.plugins.zoom.zoom,
+//     wheel: {
+//       ...Chart.defaults.plugins.zoom.zoom?.wheel,
+//       eventOptions: {
+//         passive: true,
+//       },
+//     },
+//     pinch: {
+//       ...Chart.defaults.plugins.zoom.zoom?.pinch,
+//       eventOptions: {
+//         passive: true,
+//       },
+//     },
+//   },
+// };
