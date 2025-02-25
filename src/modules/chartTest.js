@@ -114,7 +114,7 @@ export class ChartTest {
               display: false,
             },
             tooltip: {
-              enabled: true,
+              enabled: false,
               intersect: true,
               mode: "point",
             },
@@ -352,22 +352,24 @@ export class ChartTest {
         this.overlayCtx.canvas.height
       );
 
-      const startX = window.mainCanvas.getOverlaysArray()[0].startX;
-      const startY = window.mainCanvas.getOverlaysArray()[0].startY;
-      const endX = window.mainCanvas.getOverlaysArray()[0].endX;
-      const endY = window.mainCanvas.getOverlaysArray()[0].endY;
+      // 모든 오버레이 요소들을 순회하며 렌더링
+      const overlays = window.mainCanvas.getOverlaysArray();
 
-      const startXPixel = chart.scales.x.getPixelForValue(startX);
-      const endXPixel = chart.scales.x.getPixelForValue(endX);
-      const startYPixel = chart.scales.y.getPixelForValue(startY);
-      const endYPixel = chart.scales.y.getPixelForValue(endY);
+      overlays.forEach((overlay) => {
+        const { startX, startY, endX, endY } = overlay;
 
-      this.overlayCtx.beginPath();
-      this.overlayCtx.moveTo(startXPixel, startYPixel);
-      this.overlayCtx.lineTo(endXPixel, endYPixel);
-      this.overlayCtx.lineWidth = 1;
-      this.overlayCtx.strokeStyle = "red";
-      this.overlayCtx.stroke();
+        const startXPixel = chart.scales.x.getPixelForValue(startX);
+        const endXPixel = chart.scales.x.getPixelForValue(endX);
+        const startYPixel = chart.scales.y.getPixelForValue(startY);
+        const endYPixel = chart.scales.y.getPixelForValue(endY);
+
+        this.overlayCtx.beginPath();
+        this.overlayCtx.moveTo(startXPixel, startYPixel);
+        this.overlayCtx.lineTo(endXPixel, endYPixel);
+        this.overlayCtx.lineWidth = 1;
+        this.overlayCtx.strokeStyle = "red";
+        this.overlayCtx.stroke();
+      });
     }
   }
 

@@ -61,7 +61,7 @@ export class ChartCrosshair {
     this.y = y;
     this.isVisible = true;
     if (!this.isSubscribed) {
-      console.log("subscribe");
+      // console.log("subscribe");
       tickerInstance.subscribe(this.boundDraw);
       this.isSubscribed = true;
     }

@@ -10,29 +10,33 @@ export class DrawingTool {
     this.overlayCtx = overlayCanvas.getContext("2d");
     this.mouseMoveHandler = null;
     this.clickHandler = null;
-    this.xPixel = null;
-    this.yPixel = null;
+    this.currentPosition = { x: null, y: null }; // 현재 마우스 위치 (데이터 값)
+    this.points = {
+      start: { x: null, y: null }, // 시작점 (픽셀 값)
+      end: { x: null, y: null }, // 끝점 (픽셀 값)
+    };
     this.clickCount = 0; // 클릭 횟수를 기록하기 위한 변수
-    this.startX = null;
-    this.startY = null;
-    this.endX = null;
-    this.endY = null;
     this.finishDrawLineHandler = null;
-  }
+    this.isDrawingMode = false; // 그리기 모드 상태 추적
+    this.originalZoomPanState = null; // 원래 줌/패닝 상태 저장
+    this.currentTool = null; // 현재 선택된 도구 타입 저장
 
-  createToolPanel() {
-    const toolPanel = this.container;
-    toolPanel.classList.add("tool-panel");
-
-    const tools = [
+    // 가능한 그리기 도구들
+    this.tools = [
       { name: "Line", icon: "public/icons/line.svg" },
       { name: "ExtendedLine", icon: "public/icons/extended line.svg" },
       { name: "Ray", icon: "public/icons/ray.svg" },
       { name: "HorizontalLine", icon: "public/icons/horizontal line.svg" },
       { name: "VerticalLine", icon: "public/icons/vertical line.svg" },
     ];
+  }
 
-    tools.forEach((tool) => {
+  // UI 관련 메서드
+  createToolPanel() {
+    const toolPanel = this.container;
+    toolPanel.classList.add("tool-panel");
+
+    this.tools.forEach((tool) => {
       const button = document.createElement("button");
       const img = document.createElement("img");
       img.src = tool.icon;
@@ -40,48 +44,123 @@ export class DrawingTool {
 
       button.appendChild(img);
       button.addEventListener("click", () => {
-        this[`clickDraw${tool.name}`]();
+        this.clickDrawTool(tool.name);
       });
 
       toolPanel.appendChild(button);
     });
   }
 
-  addMouseMoveHandler() {
-    console.log("마우스 좌표 및 클릭 이벤트 구독 시작");
+  // 도구 선택 및 그리기 모드 제어 메서드
+  clickDrawTool(toolType) {
+    console.log(`draw${toolType}`);
+    this.resetDrawingState();
+    this.currentTool = toolType;
+    this.enableDrawingMode();
+  }
 
-    // 마우스 이동 이벤트 구독
-    this.mouseMoveHandler = this.onMouseMove.bind(this);
-    if (
-      window.mainCanvas &&
-      typeof window.mainCanvas.addMouseMoveListener === "function"
-    ) {
-      window.mainCanvas.addMouseMoveListener(this.mouseMoveHandler);
+  // 그리기 상태 초기화
+  resetDrawingState() {
+    this.clickCount = 0;
+    this.currentPosition = { x: null, y: null };
+    this.points = {
+      start: { x: null, y: null },
+      end: { x: null, y: null },
+    };
+  }
+
+  // 그리기 모드 활성화 메서드
+  enableDrawingMode() {
+    this.isDrawingMode = true;
+    this.setChartZoomPanState(false);
+    this.setupMouseListeners(true);
+  }
+
+  // 차트 줌/팬 상태 설정
+  setChartZoomPanState(enabled) {
+    if (!this.chartCtx.chart) return;
+
+    const chart = this.chartCtx.chart;
+
+    if (enabled) {
+      // 원래 상태로 복원
+      if (this.originalZoomPanState) {
+        chart.options.plugins.zoom.zoom.wheel.enabled =
+          this.originalZoomPanState.zoomEnabled;
+        chart.options.plugins.zoom.pan.enabled =
+          this.originalZoomPanState.panEnabled;
+
+        console.log("그리기 모드 비활성화: 줌/패닝 기능 복원됨");
+      }
     } else {
-      console.error(
-        "MainCanvas 인스턴스를 찾을 수 없어 mouseMove 구독에 실패했습니다."
-      );
+      // 현재 상태 저장 및 비활성화
+      this.originalZoomPanState = {
+        zoomEnabled: chart.options.plugins.zoom.zoom.wheel.enabled,
+        panEnabled: chart.options.plugins.zoom.pan.enabled,
+      };
+
+      chart.options.plugins.zoom.zoom.wheel.enabled = false;
+      chart.options.plugins.zoom.pan.enabled = false;
+
+      console.log("그리기 모드 활성화: 줌/패닝 기능 비활성화됨");
     }
 
-    // 마우스 클릭 이벤트도 함께 구독
-    this.clickHandler = this.onMouseClick.bind(this);
-    if (
-      window.mainCanvas &&
-      typeof window.mainCanvas.addMouseClickListener === "function"
-    ) {
-      window.mainCanvas.addMouseClickListener(this.clickHandler);
+    chart.update("none");
+  }
+
+  // 마우스 이벤트 리스너 설정/제거
+  setupMouseListeners(add) {
+    if (!window.mainCanvas) {
+      console.error("MainCanvas 인스턴스를 찾을 수 없습니다.");
+      return;
+    }
+
+    if (add) {
+      // 리스너 추가
+      console.log("마우스 좌표 및 클릭 이벤트 구독 시작");
+
+      this.mouseMoveHandler = this.onMouseMove.bind(this);
+      this.clickHandler = this.onMouseClick.bind(this);
+
+      if (typeof window.mainCanvas.addMouseMoveListener === "function") {
+        window.mainCanvas.addMouseMoveListener(this.mouseMoveHandler);
+      } else {
+        console.error("mouseMove 구독에 실패했습니다.");
+      }
+
+      if (typeof window.mainCanvas.addMouseClickListener === "function") {
+        window.mainCanvas.addMouseClickListener(this.clickHandler);
+      } else {
+        console.error("mouseClick 구독에 실패했습니다.");
+      }
     } else {
-      console.error(
-        "MainCanvas 인스턴스를 찾을 수 없어 mouseClick 구독에 실패했습니다."
-      );
+      // 리스너 제거
+      if (
+        this.mouseMoveHandler &&
+        typeof window.mainCanvas.removeMouseMoveListener === "function"
+      ) {
+        window.mainCanvas.removeMouseMoveListener(this.mouseMoveHandler);
+        this.mouseMoveHandler = null;
+        console.log("마우스 좌표 구독이 취소되었습니다.");
+      }
+
+      if (
+        this.clickHandler &&
+        typeof window.mainCanvas.removeMouseClickListener === "function"
+      ) {
+        window.mainCanvas.removeMouseClickListener(this.clickHandler);
+        this.clickHandler = null;
+        console.log("마우스 클릭 구독이 취소되었습니다.");
+      }
     }
   }
 
+  // 마우스 이벤트 핸들러
   onMouseMove(x, y) {
-    const { x: xPixel, y: yPixel } = this.getValueForPixel(x, y);
-    this.xPixel = xPixel;
-    this.yPixel = yPixel;
-    // 필요한 추가 작업 수행 (예: 실시간 그리기 미리보기)
+    const { x: dataX, y: dataY } = this.getValueForPixel(x, y);
+    this.currentPosition.x = dataX;
+    this.currentPosition.y = dataY;
+
     if (this.clickCount === 1 && !this.finishDrawLineHandler) {
       this.finishDrawLineHandler = this.finishDrawLine.bind(this);
       tickerInstance.subscribe(this.finishDrawLineHandler);
@@ -89,24 +168,73 @@ export class DrawingTool {
   }
 
   onMouseClick(x, y) {
-    // 첫 번째 클릭이면
     if (this.clickCount === 0) {
       console.log("첫번째 클릭");
       this.clickCount++;
       this.startDrawLine();
-    }
-    // 두 번째 클릭이면 리스너를 해제하며 종료 처리
-    else if (this.clickCount === 1) {
+    } else if (this.clickCount === 1) {
       console.log("두번째 클릭, finish");
       this.clickCount++;
       this.finishDrawLine();
     }
   }
 
-  //그리기 오버레이 캔버스에 저장
+  // 그리기 관련 메서드
+  startDrawLine() {
+    const { x: pixelX, y: pixelY } = this.getPixelForValue(
+      this.currentPosition.x,
+      this.currentPosition.y
+    );
+    this.points.start.x = pixelX;
+    this.points.start.y = pixelY;
+  }
+
+  finishDrawLine() {
+    const { x: pixelX, y: pixelY } = this.getPixelForValue(
+      this.currentPosition.x,
+      this.currentPosition.y
+    );
+    this.points.end.x = pixelX;
+    this.points.end.y = pixelY;
+
+    this.drawLine();
+
+    if (this.clickCount === 2) {
+      this.cleanupDrawingProcess();
+    }
+  }
+
+  drawLine() {
+    this.clearDrawingCanvas();
+
+    this.drawingCtx.beginPath();
+    this.drawingCtx.moveTo(this.points.start.x, this.points.start.y);
+    this.drawingCtx.lineTo(this.points.end.x, this.points.end.y);
+    this.drawingCtx.lineWidth = 1;
+    this.drawingCtx.strokeStyle = "white";
+    this.drawingCtx.stroke();
+  }
+
+  clearDrawingCanvas() {
+    this.drawingCtx.clearRect(
+      0,
+      0,
+      this.drawingCanvas.width,
+      this.drawingCanvas.height
+    );
+  }
+
+  cleanupDrawingProcess() {
+    if (this.finishDrawLineHandler) {
+      tickerInstance.unsubscribe(this.finishDrawLineHandler);
+      this.finishDrawLineHandler = null;
+    }
+    this.disableDrawingMode();
+    this.saveDrawingToOverlay();
+  }
+
   saveDrawingToOverlay() {
-    const start = { x: this.startX, y: this.startY };
-    const end = { x: this.endX, y: this.endY };
+    const { start, end } = this.points;
 
     this.overlayCtx.beginPath();
     this.overlayCtx.moveTo(start.x, start.y);
@@ -114,122 +242,55 @@ export class DrawingTool {
     this.overlayCtx.strokeStyle = "red";
     this.overlayCtx.stroke();
 
-    const { x: startX, y: startY } = this.getValueForPixel(
-      this.startX,
-      this.startY
+    const { x: startDataX, y: startDataY } = this.getValueForPixel(
+      start.x,
+      start.y
     );
-    const { x: endX, y: endY } = this.getValueForPixel(this.endX, this.endY);
+    const { x: endDataX, y: endDataY } = this.getValueForPixel(end.x, end.y);
 
-    // console.log(111, startX, startY, endX, endY);
-    window.mainCanvas.storeOverlay(startX, startY, endX, endY);
-
-    this.drawingCtx.clearRect(
-      0,
-      0,
-      this.drawingCanvas.width,
-      this.drawingCanvas.height
-    );
-    this.xPixel = null;
-    this.yPixel = null;
-    this.startX = null;
-    this.startY = null;
-    this.endX = null;
-    this.endY = null;
+    window.mainCanvas.storeOverlay(startDataX, startDataY, endDataX, endDataY);
+    this.clearDrawingCanvas();
+    this.resetDrawingState();
   }
 
-  // drawLine 버튼이 클릭되면 클릭 횟수를 초기화하고 리스너를 등록
-  clickDrawLine() {
-    this.clickCount = 0;
-    this.addMouseMoveHandler();
-  }
-  startDrawLine() {
-    // console.log("startDrawLine", this.xPixel, this.yPixel);
-    const { x: startX, y: startY } = this.getPixelForValue(
-      this.xPixel,
-      this.yPixel
-    );
-    this.startX = startX;
-    this.startY = startY;
-  }
-  finishDrawLine() {
-    // console.log("finishDrawLine", this.xPixel, this.yPixel);
-    const { x: endX, y: endY } = this.getPixelForValue(
-      this.xPixel,
-      this.yPixel
-    );
-    this.endX = endX;
-    this.endY = endY;
-    this.drawingCtx.clearRect(
-      0,
-      0,
-      this.drawingCanvas.width,
-      this.drawingCanvas.height
-    );
-    this.drawingCtx.beginPath();
-    this.drawingCtx.moveTo(this.startX, this.startY);
-    this.drawingCtx.lineTo(this.endX, this.endY);
-    this.drawingCtx.lineWidth = 1;
-    this.drawingCtx.strokeStyle = "white";
-    this.drawingCtx.stroke();
-    if (this.clickCount === 2) {
-      tickerInstance.unsubscribe(this.finishDrawLineHandler);
-      this.finishDrawLineHandler = null;
-      this.finishDraw();
-      this.saveDrawingToOverlay();
-    }
+  disableDrawingMode() {
+    this.setupMouseListeners(false);
+    this.isDrawingMode = false;
+    this.setChartZoomPanState(true);
   }
 
-  clickDrawExtendedLine() {
-    console.log("drawExtendedLine");
-  }
-
-  clickDrawRay() {
-    console.log("drawRay");
-  }
-
-  clickDrawHorizontalLine() {
-    console.log("drawHorizontalLine");
-  }
-
-  clickDrawVerticalLine() {
-    console.log("drawVerticalLine");
-  }
-
-  getValueForPixel(x, y) {
+  // 좌표 변환 유틸리티 메서드
+  /**
+   * 픽셀 좌표를 데이터 값으로 변환합니다.
+   * @param {number} pixelX - X축 픽셀 좌표
+   * @param {number} pixelY - Y축 픽셀 좌표
+   * @returns {Object} 변환된 데이터 좌표 {x, y}
+   */
+  getValueForPixel(pixelX, pixelY) {
     const chart = this.chartCtx.chart;
     const xScale = chart.scales.x;
     const yScale = chart.scales.y;
-    const dataX = xScale.getValueForPixel(x);
-    const dataY = yScale.getValueForPixel(y);
-    return { x: dataX, y: dataY };
+
+    return {
+      x: xScale.getValueForPixel(pixelX),
+      y: yScale.getValueForPixel(pixelY),
+    };
   }
-  getPixelForValue(x, y) {
+
+  /**
+   * 데이터 값을 픽셀 좌표로 변환합니다.
+   * @param {number} dataX - X축 데이터 값
+   * @param {number} dataY - Y축 데이터 값
+   * @returns {Object} 변환된 픽셀 좌표 {x, y}
+   */
+  getPixelForValue(dataX, dataY) {
     const chart = this.chartCtx.chart;
     const xScale = chart.scales.x;
     const yScale = chart.scales.y;
-    const pixelX = xScale.getPixelForValue(x);
-    const pixelY = yScale.getPixelForValue(y);
-    return { x: pixelX, y: pixelY };
-  }
 
-  finishDraw() {
-    if (
-      window.mainCanvas &&
-      typeof window.mainCanvas.removeMouseMoveListener === "function" &&
-      this.mouseMoveHandler
-    ) {
-      window.mainCanvas.removeMouseMoveListener(this.mouseMoveHandler);
-      console.log("마우스 좌표 구독이 취소되었습니다.");
-      this.mouseMoveHandler = null;
-    }
-    if (
-      window.mainCanvas &&
-      typeof window.mainCanvas.removeMouseClickListener === "function" &&
-      this.clickHandler
-    ) {
-      window.mainCanvas.removeMouseClickListener(this.clickHandler);
-      console.log("마우스 클릭 구독이 취소되었습니다.");
-      this.clickHandler = null;
-    }
+    return {
+      x: xScale.getPixelForValue(dataX),
+      y: yScale.getPixelForValue(dataY),
+    };
   }
 }
