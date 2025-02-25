@@ -130,9 +130,43 @@ export class DrawingTool {
 
   // 그리기 모드 활성화 메서드
   enableDrawingMode() {
+    // 기존 줌/팬 상태 저장
+    this.originalZoomPanState = {
+      zoom: this.chartCtx.chart.options.plugins.zoom.zoom.enabled,
+      pan: this.chartCtx.chart.options.plugins.zoom.pan.enabled,
+    };
+
+    // 줌/팬 비활성화
+    this.chartCtx.chart.options.plugins.zoom.zoom.enabled = false;
+    this.chartCtx.chart.options.plugins.zoom.pan.enabled = false;
+    this.chartCtx.chart.update("none");
+
+    // 드로잉 모드 활성화
     this.isDrawingMode = true;
-    this.setChartZoomPanState(false);
-    this.setupMouseListeners(true);
+
+    // 이벤트 리스너 추가 (패시브 옵션 추가)
+    this.drawingCanvas.addEventListener("mousemove", this.boundOnMouseMove, {
+      passive: true,
+    });
+    this.drawingCanvas.addEventListener("click", this.boundOnMouseClick);
+
+    // 모바일 터치 이벤트에도 패시브 옵션 추가
+    this.drawingCanvas.addEventListener(
+      "touchmove",
+      this.handleTouchMove.bind(this),
+      { passive: true }
+    );
+    this.drawingCanvas.addEventListener(
+      "touchstart",
+      this.handleTouchStart.bind(this),
+      { passive: true }
+    );
+
+    // 이벤트 발생
+    this.dispatchEvent(EventTypes.DRAWING_START, {
+      position: this.currentPosition,
+      tool: this.currentTool,
+    });
   }
 
   // 차트 줌/팬 상태 설정 (더 명확한 구현)
@@ -409,6 +443,23 @@ export class DrawingTool {
       // 선택된 도구 버튼 스타일 업데이트
       this.updateToolButtonStyles(this.currentTool, false);
       this.currentTool = null; // 도구 초기화는 resetTool이 true일 때만
+    }
+
+    // 이벤트 리스너 제거
+    this.drawingCanvas.removeEventListener("mousemove", this.boundOnMouseMove);
+    this.drawingCanvas.removeEventListener("click", this.boundOnMouseClick);
+
+    // 터치 이벤트 리스너도 제거
+    this.drawingCanvas.removeEventListener("touchmove", this.handleTouchMove);
+    this.drawingCanvas.removeEventListener("touchstart", this.handleTouchStart);
+
+    // 원래 줌/팬 상태 복원
+    if (this.originalZoomPanState) {
+      this.chartCtx.chart.options.plugins.zoom.zoom.enabled =
+        this.originalZoomPanState.zoom;
+      this.chartCtx.chart.options.plugins.zoom.pan.enabled =
+        this.originalZoomPanState.pan;
+      this.chartCtx.chart.update("none");
     }
 
     console.log("그리기 모드 비활성화됨, 도구 초기화:", resetTool);

@@ -38,6 +38,9 @@ export class ChartTest {
     this.boundUpdateOverlayCanvas = this.updateOverlayCanvas.bind(this);
     this.isOverlaySubscribed = false;
 
+    // 스로틀링 없이 바로 바인딩
+    this.updateMousePositionBound = this.updateMousePosition.bind(this);
+
     this.initialize();
   }
 
@@ -73,6 +76,30 @@ export class ChartTest {
 
       // 차트 렌더링
       this.render();
+
+      // 차트 캔버스에 이벤트 리스너 추가
+      this.chartCtx.canvas.addEventListener(
+        "wheel",
+        this.handleWheel.bind(this),
+        { passive: true }
+      );
+      this.chartCtx.canvas.addEventListener(
+        "touchstart",
+        this.handleTouchStart.bind(this),
+        { passive: true }
+      );
+      this.chartCtx.canvas.addEventListener(
+        "touchmove",
+        this.handleTouchMove.bind(this),
+        { passive: true }
+      );
+
+      // 마우스 이벤트 리스너 추가
+      this.chartCtx.canvas.addEventListener(
+        "mousemove",
+        this.handleMouseMove.bind(this),
+        { passive: true }
+      );
     } catch (error) {
       console.error("차트 초기화 중 오류 발생:", error);
     }
@@ -154,38 +181,71 @@ export class ChartTest {
       zoom: {
         limits: {
           x: { min: earliestX, max: latestX },
+          y: { min: "original", max: "original" },
+        },
+        eventOptions: {
+          passive: true,
         },
         pan: {
           enabled: true,
           mode: "xy",
+          threshold: 10,
+          eventOptions: {
+            passive: true,
+          },
+          onPanStart: ({ chart }) => {
+            chart._performanceMode = true;
+          },
           onPan: ({ chart }) => {
             const xMin = chart.scales.x.min;
             if (xMin <= this.earliestX && !this.isLoading) {
               this.debouncedCheckLimitReached();
             }
-            this.subscribeOverlayUpdate();
+
+            if (!this._panAnimFrame) {
+              this._panAnimFrame = requestAnimationFrame(() => {
+                this.updateOverlayCanvas();
+                this._panAnimFrame = null;
+              });
+            }
           },
-          onPanComplete: () => {
+          onPanComplete: ({ chart }) => {
+            chart._performanceMode = false;
             this.unsubscribeOverlayUpdate();
           },
         },
         zoom: {
-          wheel: { enabled: true, speed: 0.1 },
-          pinch: { enabled: true, speed: 0.1 },
-          mode: "x",
-          onZoomStart: ({ chart, event }) => {
-            const mode = event.ctrlKey || event.metaKey ? "y" : "x";
-            chart.options.plugins.zoom.zoom.mode = mode;
+          wheel: {
+            enabled: true,
+            speed: 0.1,
+            threshold: 2,
+            eventOptions: {
+              passive: true,
+            },
+          },
+          pinch: {
+            enabled: true,
+            eventOptions: {
+              passive: true,
+            },
+          },
+          mode: "xy",
+          onZoomStart: ({ chart }) => {
+            chart._performanceMode = true;
           },
           onZoom: () => {
-            this.subscribeOverlayUpdate();
+            if (!this._zoomAnimFrame) {
+              this._zoomAnimFrame = requestAnimationFrame(() => {
+                this.updateOverlayCanvas();
+                this._zoomAnimFrame = null;
+              });
+            }
           },
-          onZoomComplete: () => {
+          onZoomComplete: ({ chart }) => {
+            chart._performanceMode = false;
+
             this.unsubscribeOverlayUpdate();
-          },
-          limits: {
-            x: { min: earliestX, max: latestX },
-            y: { min: "original", max: "original" },
+            this.updateOverlayCanvas();
           },
         },
       },
@@ -244,7 +304,7 @@ export class ChartTest {
         params: {
           symbol: "BTCUSDT",
           interval: "1d",
-          limit: 100,
+          limit: 1000,
         },
       });
 
@@ -261,7 +321,7 @@ export class ChartTest {
         params: {
           symbol: "BTCUSDT",
           interval: "1d",
-          limit: 100,
+          limit: 1000,
           endTime: this.chart.data.labels[0] - 1000 * 60 * 60,
         },
       });
@@ -275,12 +335,10 @@ export class ChartTest {
 
   // 디바운스된 버전의 checkLimitReached 함수
   async debouncedCheckLimitReached() {
-    // 이전 타이머가 존재하면 취소
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
 
-    // 이미 로딩 중이라면 함수 종료
     if (this.isLoading) {
       return;
     }
@@ -289,12 +347,9 @@ export class ChartTest {
     this.showLoadingSpinner();
 
     try {
-      // 데이터 가져오기
       const formattedData = await this.handleFetchMoreData();
 
-      // 새 데이터가 있을 경우만 처리
       if (formattedData.labels.length > 0) {
-        // 일반 배열로 데이터 추가
         this.labelsStack = [...formattedData.labels, ...this.labelsStack];
         this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
 
@@ -364,11 +419,8 @@ export class ChartTest {
 
   // 공통 코어 함수 추가
   _drawOverlays(overlays, fullClear = false) {
-    // console.log("overlays", overlays);
-    // 오버레이 유효성 검사
     if (!overlays || !Array.isArray(overlays) || overlays.length === 0) return;
 
-    // 오버레이 캔버스 초기화 (fullClear 파라미터에 따라 전체 또는 절반 크기로 초기화)
     const width = fullClear
       ? this.overlayCtx.canvas.width
       : this.overlayCtx.canvas.width / 2;
@@ -378,7 +430,6 @@ export class ChartTest {
 
     this.overlayCtx.clearRect(0, 0, width, height);
 
-    // 저장된 모든 오버레이 다시 그리기
     overlays.forEach((overlay) => {
       if (!overlay) return;
 
@@ -601,30 +652,78 @@ export class ChartTest {
     });
   }
 
-  // 메서드 수정
+  // 오버레이 렌더링 최적화
   updateOverlayCanvas() {
-    // 줌/패닝 중 호출되는 메서드
-    const overlays = window.mainCanvas?.getOverlaysArray();
-    this._drawOverlays(overlays, true); // 전체 캔버스를 지우도록 true 전달
+    if (this._updateRaf) {
+      cancelAnimationFrame(this._updateRaf);
+      this._updateRaf = null;
+    }
+
+    this._updateRaf = requestAnimationFrame(() => {
+      const overlays = window.mainCanvas?.getOverlaysArray();
+      if (overlays && overlays.length) {
+        const chartArea = this.chart.chartArea;
+
+        if (this.chart._performanceMode) {
+          this.overlayCtx.clearRect(
+            0,
+            0,
+            this.overlayCtx.canvas.width,
+            this.overlayCtx.canvas.height
+          );
+          this.overlayCtx.globalAlpha = 0.7;
+          this._drawOverlays(overlays, true);
+          this.overlayCtx.globalAlpha = 1.0;
+        } else {
+          this._drawOverlays(overlays, true);
+        }
+      }
+      this._updateRaf = null;
+    });
+  }
+
+  // 오버레이 갱신이 필요한지 확인하는 플래그 추가
+  setNeedsOverlayUpdate() {
+    this.needsOverlayUpdate = true;
   }
 
   renderOverlays() {
-    // 차트 렌더링 시 호출되는 메서드
-    // window.mainCanvas 자체가 초기화되었는지 확인
     if (!window.mainCanvas) return;
 
-    // getOverlaysArray 메서드가 존재하는지 확인
     const overlays =
       window.mainCanvas.getOverlaysArray &&
       window.mainCanvas.getOverlaysArray();
+    if (!overlays || !overlays.length) return;
 
-    this._drawOverlays(overlays, false); // 절반 크기만 지우도록 false 전달
+    if (!this._renderRaf) {
+      this._renderRaf = requestAnimationFrame(() => {
+        this._drawOverlays(overlays, false);
+        this._renderRaf = null;
+      });
+    }
   }
 
+  // 마우스 위치 업데이트 메서드 최적화
   updateMousePosition(x, y) {
-    if (this.crosshair && typeof this.crosshair.updatePosition === "function") {
-      this.crosshair.updatePosition(x, y);
+    if (!this.crosshair || typeof this.crosshair.updatePosition !== "function")
+      return;
+
+    if (!this._crosshairRaf) {
+      this._crosshairRaf = requestAnimationFrame(() => {
+        this.crosshair.updatePosition(x, y);
+        this._crosshairRaf = null;
+      });
     }
+  }
+
+  // handleMouseMove 메서드 추가 - 캔버스에 마우스 이벤트 리스너로 사용
+  handleMouseMove(event) {
+    const rect = this.chartCtx.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    // 스로틀 없이 직접 호출
+    this.updateMousePosition(x, y);
   }
 
   mouseLeave() {
@@ -639,7 +738,6 @@ export class ChartTest {
       this.chart.update("none");
     }
 
-    // 오버레이 다시 그리기
     this.renderOverlays();
   }
 
@@ -651,5 +749,29 @@ export class ChartTest {
     this.overlayCtx.lineWidth = width;
     this.overlayCtx.strokeStyle = color;
     this.overlayCtx.stroke();
+  }
+
+  handleWheel(event) {
+    // 구현 필요
+  }
+
+  handleTouchStart(event) {
+    // 구현 필요
+  }
+
+  handleTouchMove(event) {
+    // 구현 필요
+  }
+
+  // 화면 크기 조정 이벤트에 debounce 적용
+  handleResize() {
+    if (this._resizeTimer) {
+      clearTimeout(this._resizeTimer);
+    }
+
+    this._resizeTimer = setTimeout(() => {
+      this.render();
+      this._resizeTimer = null;
+    }, 150);
   }
 }
