@@ -180,19 +180,27 @@ export class ChartTest {
       },
       zoom: {
         limits: {
-          x: { min: earliestX, max: latestX },
-          y: { min: "original", max: "original" },
+          // x: {
+          //   min: earliestX - 1000 * 60 * 60 * 24 * 30, // 30일 더 이전까지 확장
+          //   max: latestX + 1000 * 60 * 60 * 24 * 30, // 30일 더 이후까지 확장
+          // },
+          // y: {
+          //   min: "original",
+          //   max: "original",
+          //   minRange: 1, // 최소 범위 설정 (과도한 줌인 방지)
+          // },
         },
         eventOptions: {
           passive: true,
         },
         pan: {
           enabled: true,
-          mode: "xy",
+          mode: "x",
           threshold: 10,
           eventOptions: {
             passive: true,
           },
+          scaleMode: "xy", // x축과 y축 모두 패닝 가능
           onPanStart: ({ chart }) => {
             chart._performanceMode = true;
           },
@@ -229,9 +237,15 @@ export class ChartTest {
               passive: true,
             },
           },
-          mode: "xy",
-          onZoomStart: ({ chart }) => {
+          mode: "x",
+          onZoomStart: ({ chart, event }) => {
             chart._performanceMode = true;
+
+            if (event && (event.metaKey || event.ctrlKey)) {
+              chart.options.plugins.zoom.zoom.mode = "y";
+            } else {
+              chart.options.plugins.zoom.zoom.mode = "x";
+            }
           },
           onZoom: () => {
             if (!this._zoomAnimFrame) {
@@ -243,7 +257,6 @@ export class ChartTest {
           },
           onZoomComplete: ({ chart }) => {
             chart._performanceMode = false;
-
             this.unsubscribeOverlayUpdate();
             this.updateOverlayCanvas();
           },
