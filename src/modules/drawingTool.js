@@ -40,6 +40,7 @@ export class DrawingTool {
       EventTypes.DRAWING_MOVE,
       EventTypes.DRAWING_END,
       EventTypes.TOOL_CHANGE,
+      EventTypes.DRAWING_CANCEL,
     ].forEach((type) => {
       this.eventListeners.set(type, new Set());
     });
@@ -69,11 +70,44 @@ export class DrawingTool {
   clickDrawTool(toolType) {
     console.log(`draw${toolType}`);
     this.resetDrawingState();
+
+    // 이전에 선택된 버튼에서 클래스 제거
+    this.updateToolButtonStyles(this.currentTool, false);
+
+    // 새로 선택된 버튼에 클래스 추가
+    this.updateToolButtonStyles(toolType, true);
+
     this.currentTool = toolType;
     this.enableDrawingMode();
 
     // 이벤트 발생
     this.dispatchEvent(EventTypes.TOOL_CHANGE, { tool: toolType });
+  }
+
+  // 도구 버튼 스타일 업데이트
+  updateToolButtonStyles(toolName, isSelected) {
+    if (!toolName) return;
+
+    const button = this.findButtonByToolName(toolName);
+    if (button) {
+      if (isSelected) {
+        button.classList.add("selected");
+      } else {
+        button.classList.remove("selected");
+      }
+    }
+  }
+
+  // 도구 이름으로 버튼 찾기
+  findButtonByToolName(toolName) {
+    const buttons = this.container.querySelectorAll("button");
+    for (const button of buttons) {
+      const img = button.querySelector("img");
+      if (img && img.alt === toolName) {
+        return button;
+      }
+    }
+    return null;
   }
 
   // 그리기 상태 초기화
@@ -143,6 +177,14 @@ export class DrawingTool {
         console.error("mouseClick 구독에 실패했습니다.");
       }
 
+      // 추가: 취소 이벤트 구독
+      if (typeof window.mainCanvas.addEventListener === "function") {
+        window.mainCanvas.addEventListener(
+          EventTypes.DRAWING_CANCEL,
+          this.cancelDrawing.bind(this)
+        );
+      }
+
       console.log("마우스 이벤트 구독 시작");
     } else {
       // 리스너 제거
@@ -152,6 +194,14 @@ export class DrawingTool {
 
       if (typeof window.mainCanvas.removeMouseClickListener === "function") {
         window.mainCanvas.removeMouseClickListener(this.boundOnMouseClick);
+      }
+
+      // 추가: 취소 이벤트 구독 해제
+      if (typeof window.mainCanvas.removeEventListener === "function") {
+        window.mainCanvas.removeEventListener(
+          EventTypes.DRAWING_CANCEL,
+          this.cancelDrawing.bind(this)
+        );
       }
 
       console.log("마우스 이벤트 구독 취소됨");
@@ -266,6 +316,9 @@ export class DrawingTool {
     this.setupMouseListeners(false);
     this.isDrawingMode = false;
     this.setChartZoomPanState(true);
+
+    // 선택된 버튼 스타일 제거
+    this.updateToolButtonStyles(this.currentTool, false);
   }
 
   // 좌표 변환 유틸리티 메서드
@@ -331,5 +384,22 @@ export class DrawingTool {
       listeners.delete(listener);
     }
     return this;
+  }
+
+  // 그리기 취소 메서드 추가
+  cancelDrawing() {
+    console.log("그리기 취소됨");
+
+    // 그리기 캔버스 지우기
+    this.clearDrawingCanvas();
+
+    // 그리기 상태 초기화
+    this.resetDrawingState();
+
+    // 그리기 모드 비활성화
+    this.disableDrawingMode();
+
+    // 이벤트 발생
+    this.dispatchEvent(EventTypes.DRAWING_CANCEL);
   }
 }

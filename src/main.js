@@ -140,6 +140,15 @@ class MainCanvas {
   getOverlaysArray() {
     return this.overlaysArray;
   }
+
+  // 이벤트 리스너 관리 메서드에 추가
+  addEventListener(type, listener) {
+    this.eventManager.addEventListener(type, listener);
+  }
+
+  removeEventListener(type, listener) {
+    this.eventManager.removeEventListener(type, listener);
+  }
 }
 
 // 페이지 로드 시 메인 캔버스 초기화

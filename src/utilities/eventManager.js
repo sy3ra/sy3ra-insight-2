@@ -7,11 +7,13 @@ export const EventTypes = {
   MOUSE_UP: "mouseup",
   MOUSE_CLICK: "click",
   MOUSE_LEAVE: "mouseleave",
+  CONTEXT_MENU: "contextmenu",
   RESIZE: "resize",
   DRAWING_START: "drawing:start",
   DRAWING_MOVE: "drawing:move",
   DRAWING_END: "drawing:end",
   TOOL_CHANGE: "drawing:tool-change",
+  DRAWING_CANCEL: "drawing:cancel",
 };
 
 export class EventManager {
@@ -44,12 +46,16 @@ export class EventManager {
       EventTypes.MOUSE_UP,
       EventTypes.MOUSE_CLICK,
       EventTypes.MOUSE_LEAVE,
+      EventTypes.CONTEXT_MENU,
     ].forEach((type) => {
       this.canvas.addEventListener(type, this.handleEvent);
     });
 
     // 윈도우 리사이즈 이벤트 등록
     window.addEventListener(EventTypes.RESIZE, this.handleResize, false);
+
+    // 차트 영역 밖 클릭 감지를 위한 document 이벤트 등록
+    document.addEventListener("mousedown", this.handleDocumentClick.bind(this));
   }
 
   /**
@@ -58,6 +64,13 @@ export class EventManager {
   handleEvent(event) {
     // 이벤트 타입 추출
     const type = event.type;
+
+    // contextmenu 이벤트(우클릭) 처리
+    if (type === EventTypes.CONTEXT_MENU) {
+      event.preventDefault(); // 기본 컨텍스트 메뉴 표시 방지
+      this.notifyListeners(EventTypes.DRAWING_CANCEL);
+      return;
+    }
 
     // 마우스 좌표 계산 (mouseleave 제외)
     if (type !== EventTypes.MOUSE_LEAVE) {
@@ -153,6 +166,7 @@ export class EventManager {
       EventTypes.MOUSE_UP,
       EventTypes.MOUSE_CLICK,
       EventTypes.MOUSE_LEAVE,
+      EventTypes.CONTEXT_MENU,
     ].forEach((type) => {
       this.canvas.removeEventListener(type, this.handleEvent);
     });
@@ -162,5 +176,13 @@ export class EventManager {
 
     // 모든 리스너 맵 초기화
     this.listeners.forEach((set) => set.clear());
+  }
+
+  // 문서 클릭 처리 메서드 추가
+  handleDocumentClick(event) {
+    // 클릭이 캔버스 영역 밖에서 발생했는지 확인
+    if (!this.canvas.contains(event.target)) {
+      this.notifyListeners(EventTypes.DRAWING_CANCEL);
+    }
   }
 }

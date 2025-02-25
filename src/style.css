@@ -128,3 +128,9 @@ canvas#crosshairCanvas {
   filter: brightness(0) saturate(100%) invert(8%) sepia(19%) saturate(454%)
     hue-rotate(155deg) brightness(95%) contrast(93%);
 }
+
+/* 선택된 도구 버튼 스타일 */
+.tool-panel button.selected {
+  border: 2px solid rgba(255, 255, 255, 0.546);
+  background-color: var(--bg-btn-selected-color);
+}
