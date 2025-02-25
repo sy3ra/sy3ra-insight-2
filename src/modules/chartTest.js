@@ -28,161 +28,33 @@ export class ChartTest {
     this.spinner = null;
     this.labelsStack = [];
     this.dataStack = [];
-    this.initialize();
     this.boundUpdateOverlayCanvas = this.updateOverlayCanvas.bind(this);
     this.isOverlaySubscribed = false;
+
+    this.initialize();
   }
 
   async initialize() {
     try {
       // 초기 데이터 가져오기
       const data = await this.handleFetchData();
+      if (!data || !data.labels || !data.labels.length) {
+        console.error("차트 데이터가 유효하지 않습니다.");
+        return;
+      }
 
       // 데이터의 가장 초기 시간과 최신 시간 설정
-      this.earliestX = data.labels[0] - 1000 * 60 * 60 * 24 * 3; // 1주일 정도의 여유 마진 추가
+      this.earliestX = data.labels[0] - 1000 * 60 * 60 * 24 * 3; // 3일의 여유 마진 추가
       const latestX = data.labels[data.labels.length - 1];
+
+      // 차트 옵션 설정
+      const chartOptions = this.createChartOptions(this.earliestX, latestX);
 
       // 차트 초기화
       this.chart = new Chart(this.chartCtx, {
         type: "candlestick",
         data: data,
-        options: {
-          maintainAspectRatio: false,
-          animation: {
-            duration: 0,
-          },
-          responsive: false,
-          scales: {
-            x: {
-              type: "time",
-              time: {
-                tooltipFormat: "MM/dd",
-                displayFormats: {
-                  millisecond: "HH:mm:ss.SSS",
-                  second: "HH:mm:ss",
-                  minute: "HH:mm",
-                  hour: "MM/dd",
-                  day: "MM/dd",
-                  week: "MM/dd",
-                  month: "MM/dd",
-                  quarter: "MM/dd",
-                  year: "MM/dd",
-                },
-              },
-              ticks: {
-                color: "#d4d4d4",
-                autoSkip: true,
-                autoSkipPadding: 100,
-                source: "auto",
-                display: true,
-              },
-              grid: {
-                color: "rgba(255, 255, 255, 0.1)",
-                display: true,
-                drawOnChartArea: true,
-                drawTicks: false,
-              },
-              min: this.earliestX,
-              max: latestX,
-            },
-            y: {
-              position: "right",
-              beginAtZero: false,
-              ticks: {
-                color: "#d4d4d4",
-                callback: function (value) {
-                  return value.toFixed(2);
-                },
-                padding: 8,
-              },
-              grid: {
-                color: "rgba(255, 255, 255, 0.1)",
-                display: true,
-                drawOnChartArea: true,
-              },
-              afterFit: function (scaleInstance) {
-                scaleInstance.width = 90; // y축 레이블 영역의 너비 고정
-              },
-            },
-          },
-          plugins: {
-            title: {
-              display: false,
-              fullSize: true,
-            },
-            legend: {
-              display: false,
-            },
-            tooltip: {
-              enabled: false,
-              intersect: true,
-              mode: "point",
-            },
-            zoom: {
-              limits: {
-                x: {
-                  min: this.earliestX,
-                  max: latestX,
-                },
-              },
-              pan: {
-                enabled: true,
-                mode: "xy",
-                onPan: ({ chart }) => {
-                  const xMin = chart.scales.x.min;
-                  if (xMin <= this.earliestX && !this.isLoading) {
-                    this.debouncedCheckLimitReached();
-                  }
-                  if (!this.isOverlaySubscribed) {
-                    // console.log("subscribe");
-                    tickerInstance.subscribe(this.boundUpdateOverlayCanvas);
-                    this.isOverlaySubscribed = true;
-                  }
-                },
-                onPanComplete: () => {
-                  if (this.isOverlaySubscribed) {
-                    // console.log("unsubscribe");
-                    tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
-                    this.isOverlaySubscribed = false;
-                  }
-                },
-              },
-              zoom: {
-                wheel: {
-                  enabled: true,
-                  speed: 0.1,
-                },
-                pinch: {
-                  enabled: true,
-                  speed: 0.1,
-                },
-                mode: "x",
-                onZoomStart: ({ chart, event }) => {
-                  const mode = event.ctrlKey || event.metaKey ? "y" : "x";
-                  chart.options.plugins.zoom.zoom.mode = mode;
-                },
-                onZoom: ({ chart }) => {
-                  if (!this.isOverlaySubscribed) {
-                    // console.log("subscribe");
-                    tickerInstance.subscribe(this.boundUpdateOverlayCanvas);
-                    this.isOverlaySubscribed = true;
-                  }
-                },
-                onZoomComplete: () => {
-                  if (this.isOverlaySubscribed) {
-                    // console.log("unsubscribe");
-                    tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
-                    this.isOverlaySubscribed = false;
-                  }
-                },
-                limits: {
-                  x: { min: this.earliestX, max: latestX },
-                  y: { min: "original", max: "original" },
-                },
-              },
-            },
-          },
-        },
+        options: chartOptions,
       });
 
       // 일반 배열로 초기 데이터 설정
@@ -199,6 +71,136 @@ export class ChartTest {
     }
   }
 
+  // 차트 옵션 생성 메서드
+  createChartOptions(earliestX, latestX) {
+    return {
+      maintainAspectRatio: false,
+      animation: { duration: 0 },
+      responsive: false,
+      scales: {
+        x: {
+          type: "time",
+          time: {
+            tooltipFormat: "MM/dd",
+            displayFormats: {
+              millisecond: "HH:mm:ss.SSS",
+              second: "HH:mm:ss",
+              minute: "HH:mm",
+              hour: "MM/dd",
+              day: "MM/dd",
+              week: "MM/dd",
+              month: "MM/dd",
+              quarter: "MM/dd",
+              year: "MM/dd",
+            },
+          },
+          ticks: {
+            color: "#d4d4d4",
+            autoSkip: true,
+            autoSkipPadding: 100,
+            source: "auto",
+            display: true,
+          },
+          grid: {
+            color: "rgba(255, 255, 255, 0.1)",
+            display: true,
+            drawOnChartArea: true,
+            drawTicks: false,
+          },
+          min: earliestX,
+          max: latestX,
+        },
+        y: {
+          position: "right",
+          beginAtZero: false,
+          ticks: {
+            color: "#d4d4d4",
+            callback: function (value) {
+              return value.toFixed(2);
+            },
+            padding: 8,
+          },
+          grid: {
+            color: "rgba(255, 255, 255, 0.1)",
+            display: true,
+            drawOnChartArea: true,
+          },
+          afterFit: function (scaleInstance) {
+            scaleInstance.width = 90; // y축 레이블 영역의 너비 고정
+          },
+        },
+      },
+      plugins: this.createPluginsOptions(earliestX, latestX),
+    };
+  }
+
+  // 플러그인 옵션 생성 메서드
+  createPluginsOptions(earliestX, latestX) {
+    return {
+      title: { display: false, fullSize: true },
+      legend: { display: false },
+      tooltip: {
+        enabled: false,
+        intersect: true,
+        mode: "point",
+      },
+      zoom: {
+        limits: {
+          x: { min: earliestX, max: latestX },
+        },
+        pan: {
+          enabled: true,
+          mode: "xy",
+          onPan: ({ chart }) => {
+            const xMin = chart.scales.x.min;
+            if (xMin <= this.earliestX && !this.isLoading) {
+              this.debouncedCheckLimitReached();
+            }
+            this.subscribeOverlayUpdate();
+          },
+          onPanComplete: () => {
+            this.unsubscribeOverlayUpdate();
+          },
+        },
+        zoom: {
+          wheel: { enabled: true, speed: 0.1 },
+          pinch: { enabled: true, speed: 0.1 },
+          mode: "x",
+          onZoomStart: ({ chart, event }) => {
+            const mode = event.ctrlKey || event.metaKey ? "y" : "x";
+            chart.options.plugins.zoom.zoom.mode = mode;
+          },
+          onZoom: () => {
+            this.subscribeOverlayUpdate();
+          },
+          onZoomComplete: () => {
+            this.unsubscribeOverlayUpdate();
+          },
+          limits: {
+            x: { min: earliestX, max: latestX },
+            y: { min: "original", max: "original" },
+          },
+        },
+      },
+    };
+  }
+
+  // 오버레이 업데이트 구독 처리
+  subscribeOverlayUpdate() {
+    if (!this.isOverlaySubscribed) {
+      tickerInstance.subscribe(this.boundUpdateOverlayCanvas);
+      this.isOverlaySubscribed = true;
+    }
+  }
+
+  // 오버레이 업데이트 구독 해제
+  unsubscribeOverlayUpdate() {
+    if (this.isOverlaySubscribed) {
+      tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
+      this.isOverlaySubscribed = false;
+    }
+  }
+
   // 데이터 포맷팅 함수
   xohlcvFormatData(data) {
     const formattedData = data.map((item) => ({
@@ -209,7 +211,8 @@ export class ChartTest {
       c: item[4], //close
       v: item[5], //volume
     }));
-    const chartData = {
+
+    return {
       labels: formattedData.map((item) => item.x),
       datasets: [
         {
@@ -226,7 +229,6 @@ export class ChartTest {
         },
       ],
     };
-    return chartData;
   }
 
   async handleFetchData() {
@@ -239,12 +241,10 @@ export class ChartTest {
         },
       });
 
-      const data = response.data;
-      const formattedData = this.xohlcvFormatData(data);
-      return formattedData;
+      return this.xohlcvFormatData(response.data);
     } catch (error) {
       console.error("데이터를 가져오는 중 오류 발생:", error);
-      return []; // 빈 배열 반환
+      return { labels: [], datasets: [{ data: [] }] }; // 빈 데이터 반환
     }
   }
 
@@ -258,13 +258,11 @@ export class ChartTest {
           endTime: this.chart.data.labels[0] - 1000 * 60 * 60,
         },
       });
-      const data = response.data;
-      const formattedData = this.xohlcvFormatData(data);
 
-      return formattedData;
+      return this.xohlcvFormatData(response.data);
     } catch (error) {
       console.error("데이터를 가져오는 중 오류 발생:", error);
-      return [];
+      return { labels: [], datasets: [{ data: [] }] };
     }
   }
 
@@ -283,54 +281,71 @@ export class ChartTest {
     this.isLoading = true;
     this.showLoadingSpinner();
 
-    // 데이터 가져오기 완료 후 500ms 후에 로직 실행 (디바운스)
-    const formattedData = await this.handleFetchMoreData();
-    // 일반 배열로 데이터 추가
-    this.labelsStack = [...formattedData.labels, ...this.labelsStack];
-    this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
+    try {
+      // 데이터 가져오기
+      const formattedData = await this.handleFetchMoreData();
 
-    this.chart.data.labels = this.labelsStack;
-    this.chart.data.datasets[0].data = this.dataStack;
+      // 새 데이터가 있을 경우만 처리
+      if (formattedData.labels.length > 0) {
+        // 일반 배열로 데이터 추가
+        this.labelsStack = [...formattedData.labels, ...this.labelsStack];
+        this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
 
-    this.earliestX = this.labelsStack[0];
-    this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
-    this.chart.update("none");
+        this.chart.data.labels = this.labelsStack;
+        this.chart.data.datasets[0].data = this.dataStack;
 
-    this.debounceTimer = setTimeout(() => {
-      this.hideLoadingSpinner();
-      this.isLoading = false; // 로딩 완료 후 플래그 해제
-    }, 500);
+        this.earliestX = this.labelsStack[0];
+        this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
+        this.chart.update("none");
+      }
+    } catch (error) {
+      console.error("추가 데이터 로딩 중 오류:", error);
+    } finally {
+      this.debounceTimer = setTimeout(() => {
+        this.hideLoadingSpinner();
+        this.isLoading = false;
+      }, 500);
+    }
   }
 
   // 로딩스피너를 생성 및 표시하는 메서드
   showLoadingSpinner() {
     if (!this.spinner) {
-      this.spinner = document.createElement("div");
-      this.spinner.style.position = "absolute";
-      this.spinner.style.left = "20px"; // 좌측에서 약간의 여백
-      this.spinner.style.top = "50%";
-      this.spinner.style.transform = "translateY(-50%)";
-      this.spinner.style.width = "40px";
-      this.spinner.style.height = "40px";
-      this.spinner.style.border = "4px solid rgba(255, 255, 255, 0.3)";
-      this.spinner.style.borderTop = "4px solid #fff";
-      this.spinner.style.borderRadius = "50%";
-      this.spinner.style.animation = "spin 1s linear infinite";
-
-      if (!document.getElementById("spinner-keyframes")) {
-        const style = document.createElement("style");
-        style.id = "spinner-keyframes";
-        style.innerHTML = `
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}`;
-        document.head.appendChild(style);
-      }
-
-      this.chartCtx.canvas.parentElement.appendChild(this.spinner);
+      this.createSpinner();
     }
     this.spinner.style.display = "block";
+  }
+
+  // 스피너 생성 메서드
+  createSpinner() {
+    this.spinner = document.createElement("div");
+    this.spinner.style.position = "absolute";
+    this.spinner.style.left = "20px";
+    this.spinner.style.top = "50%";
+    this.spinner.style.transform = "translateY(-50%)";
+    this.spinner.style.width = "40px";
+    this.spinner.style.height = "40px";
+    this.spinner.style.border = "4px solid rgba(255, 255, 255, 0.3)";
+    this.spinner.style.borderTop = "4px solid #fff";
+    this.spinner.style.borderRadius = "50%";
+    this.spinner.style.animation = "spin 1s linear infinite";
+
+    this.createSpinnerKeyframes();
+    this.chartCtx.canvas.parentElement.appendChild(this.spinner);
+  }
+
+  // 스피너 애니메이션 키프레임 생성
+  createSpinnerKeyframes() {
+    if (!document.getElementById("spinner-keyframes")) {
+      const style = document.createElement("style");
+      style.id = "spinner-keyframes";
+      style.innerHTML = `
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }`;
+      document.head.appendChild(style);
+    }
   }
 
   // 로딩스피너를 숨기는 메서드
@@ -341,36 +356,42 @@ export class ChartTest {
   }
 
   updateOverlayCanvas() {
-    // console.log("updateOverlayCanvas");
     const chart = this.chart;
-    //패닝에 따라서 오버레이 캔버스 선분 이동
-    if (window.mainCanvas.getOverlaysArray().length > 0) {
-      this.overlayCtx.clearRect(
-        0,
-        0,
-        this.overlayCtx.canvas.width,
-        this.overlayCtx.canvas.height
-      );
+    const overlays = window.mainCanvas.getOverlaysArray();
 
-      // 모든 오버레이 요소들을 순회하며 렌더링
-      const overlays = window.mainCanvas.getOverlaysArray();
+    if (overlays.length === 0) return;
 
-      overlays.forEach((overlay) => {
-        const { startX, startY, endX, endY } = overlay;
+    // 오버레이 캔버스 초기화
+    this.overlayCtx.clearRect(
+      0,
+      0,
+      this.overlayCtx.canvas.width,
+      this.overlayCtx.canvas.height
+    );
 
-        const startXPixel = chart.scales.x.getPixelForValue(startX);
-        const endXPixel = chart.scales.x.getPixelForValue(endX);
-        const startYPixel = chart.scales.y.getPixelForValue(startY);
-        const endYPixel = chart.scales.y.getPixelForValue(endY);
+    // 모든 오버레이 요소들을 순회하며 렌더링
+    overlays.forEach((overlay) => {
+      const { startX, startY, endX, endY } = overlay;
 
-        this.overlayCtx.beginPath();
-        this.overlayCtx.moveTo(startXPixel, startYPixel);
-        this.overlayCtx.lineTo(endXPixel, endYPixel);
-        this.overlayCtx.lineWidth = 1;
-        this.overlayCtx.strokeStyle = "red";
-        this.overlayCtx.stroke();
-      });
-    }
+      // 데이터 값을 픽셀 좌표로 변환
+      const startXPixel = chart.scales.x.getPixelForValue(startX);
+      const endXPixel = chart.scales.x.getPixelForValue(endX);
+      const startYPixel = chart.scales.y.getPixelForValue(startY);
+      const endYPixel = chart.scales.y.getPixelForValue(endY);
+
+      // 선 그리기
+      this.drawLine(startXPixel, startYPixel, endXPixel, endYPixel, "red", 1);
+    });
+  }
+
+  // 선 그리기 유틸리티 메서드
+  drawLine(startX, startY, endX, endY, color = "red", width = 1) {
+    this.overlayCtx.beginPath();
+    this.overlayCtx.moveTo(startX, startY);
+    this.overlayCtx.lineTo(endX, endY);
+    this.overlayCtx.lineWidth = width;
+    this.overlayCtx.strokeStyle = color;
+    this.overlayCtx.stroke();
   }
 
   updateMousePosition(x, y) {

@@ -1,49 +1,71 @@
 import { ChartTest } from "./modules/chartTest.js";
 import { DrawingTool } from "./modules/drawingTool.js";
+import { EventManager, EventTypes } from "./utilities/eventManager.js";
 
 class MainCanvas {
   constructor(parent) {
     this.parent = parent;
-
-    //오버레이 배열
     this.overlaysArray = [];
 
-    //차트 캔버스
-    this.chartCanvas = document.createElement("canvas");
-    this.chartCanvas.id = "chartCanvas";
+    // 캔버스 초기화
+    this.initializeCanvases();
+
+    // 이벤트 매니저 초기화
+    this.eventManager = new EventManager(this.chartCanvas, null);
+
+    // 차트 및 드로잉 도구 초기화
+    this.initializeComponents();
+
+    // 이벤트 매니저에 차트 인스턴스 설정
+    this.eventManager.chartInstance = this.chartTestInstance;
+
+    // 스테이지 크기 설정
+    this.resize();
+
+    // 리사이즈 이벤트 리스너 등록
+    this.eventManager.addEventListener(
+      EventTypes.RESIZE,
+      this.resize.bind(this)
+    );
+  }
+
+  // 캔버스 생성 및 초기화
+  initializeCanvases() {
+    // 차트 캔버스
+    this.chartCanvas = this.createCanvas("chartCanvas");
     this.chartCtx = this.chartCanvas.getContext("2d");
-    parent.appendChild(this.chartCanvas);
 
     // 크로스헤어 캔버스
-    this.crosshairCanvas = document.createElement("canvas");
-    this.crosshairCanvas.id = "crosshairCanvas";
+    this.crosshairCanvas = this.createCanvas("crosshairCanvas");
     this.crosshairCtx = this.crosshairCanvas.getContext("2d");
-    parent.appendChild(this.crosshairCanvas);
 
     // 오버레이 캔버스
-    this.overlayCanvas = document.createElement("canvas");
-    this.overlayCanvas.id = "overlayCanvas";
+    this.overlayCanvas = this.createCanvas("overlayCanvas");
     this.overlayCtx = this.overlayCanvas.getContext("2d");
-    parent.appendChild(this.overlayCanvas);
 
     // 그리기 캔버스
-    this.drawingCanvas = document.createElement("canvas");
-    this.drawingCanvas.id = "drawingCanvas";
+    this.drawingCanvas = this.createCanvas("drawingCanvas");
     this.drawingCtx = this.drawingCanvas.getContext("2d");
-    parent.appendChild(this.drawingCanvas);
+  }
 
-    // 스테이지 크기
-    this.stageWidth = parent.clientWidth;
-    this.stageHeight = parent.clientHeight;
+  // 캔버스 요소 생성 유틸리티
+  createCanvas(id) {
+    const canvas = document.createElement("canvas");
+    canvas.id = id;
+    this.parent.appendChild(canvas);
+    return canvas;
+  }
 
-    //차트 인스턴스 생성
+  // 컴포넌트 초기화
+  initializeComponents() {
+    // 차트 인스턴스 생성
     this.chartTestInstance = new ChartTest(
       this.chartCtx,
       this.crosshairCtx,
       this.overlayCtx
     );
 
-    // 드로잉 인스턴스
+    // 드로잉 인스턴스 생성
     const toolPanelContainer = document.querySelector("#toolPanel");
     this.drawingInstance = new DrawingTool(
       toolPanelContainer,
@@ -52,118 +74,58 @@ class MainCanvas {
       this.overlayCanvas
     );
     this.drawingInstance.createToolPanel();
-
-    this.resize();
-
-    // 마우스 좌표 구독자를 저장할 셋 생성
-    this.mouseMoveListeners = new Set();
-    // 마우스 클릭 구독자를 저장할 셋 생성
-    this.clickListeners = new Set();
-
-    // 마우스 움직임 관련 이벤트 리스너 등록 (mousemove, mousedown, mouseup)
-    const mouseMoveEvents = ["mousemove", "mousedown", "mouseup"];
-    mouseMoveEvents.forEach((event) => {
-      this.chartCanvas.addEventListener(event, this.handleMouseMove.bind(this));
-    });
-    // 클릭 이벤트는 별도의 핸들러에 등록
-    this.chartCanvas.addEventListener("click", this.handleClick.bind(this));
-
-    this.chartCanvas.addEventListener(
-      "mouseleave",
-      this.handleMouseLeave.bind(this)
-    );
-    window.addEventListener("resize", this.resize.bind(this), false);
   }
 
+  // 캔버스 크기 조정
   resize() {
     this.stageWidth = this.parent.clientWidth;
     this.stageHeight = this.parent.clientHeight;
 
-    // 캔버스 크기 설정 (정수 픽셀값 사용)
-    this.chartCanvas.width = this.stageWidth * 2;
-    this.chartCanvas.height = this.stageHeight * 2;
+    // 모든 캔버스의 크기 설정
+    [
+      this.chartCanvas,
+      this.crosshairCanvas,
+      this.overlayCanvas,
+      this.drawingCanvas,
+    ].forEach((canvas) => {
+      canvas.width = this.stageWidth * 2;
+      canvas.height = this.stageHeight * 2;
+    });
 
-    this.crosshairCanvas.width = this.stageWidth * 2;
-    this.crosshairCanvas.height = this.stageHeight * 2;
+    // 모든 컨텍스트의 스케일 설정
+    [
+      this.chartCtx,
+      this.crosshairCtx,
+      this.overlayCtx,
+      this.drawingCtx,
+    ].forEach((ctx) => {
+      ctx.scale(2, 2);
+    });
 
-    this.overlayCanvas.width = this.stageWidth * 2;
-    this.overlayCanvas.height = this.stageHeight * 2;
-
-    this.drawingCanvas.width = this.stageWidth * 2;
-    this.drawingCanvas.height = this.stageHeight * 2;
-
-    // 캔버스 스케일 설정 레티나 디스플레이 대응
-    this.chartCtx.scale(2, 2);
-    this.crosshairCtx.scale(2, 2);
-    this.overlayCtx.scale(2, 2);
-    this.drawingCtx.scale(2, 2);
-
-    // 차트를 재렌더링
-    if (
-      this.chartTestInstance &&
-      typeof this.chartTestInstance.render === "function"
-    ) {
+    // 차트 재렌더링
+    if (this.chartTestInstance?.render) {
       this.chartTestInstance.render();
     }
   }
 
-  // 마우스 움직임 구독자 추가 메서드
+  // 이벤트 리스너 관리 메서드 - 간소화
   addMouseMoveListener(listener) {
-    this.mouseMoveListeners.add(listener);
+    this.eventManager.addEventListener(EventTypes.MOUSE_MOVE, listener);
   }
 
-  // 마우스 움직임 구독자 제거 메서드
   removeMouseMoveListener(listener) {
-    this.mouseMoveListeners.delete(listener);
+    this.eventManager.removeEventListener(EventTypes.MOUSE_MOVE, listener);
   }
 
-  // 마우스 클릭 구독자 추가 메서드
   addMouseClickListener(listener) {
-    this.clickListeners.add(listener);
+    this.eventManager.addEventListener(EventTypes.MOUSE_CLICK, listener);
   }
 
-  // 마우스 클릭 구독자 제거 메서드
   removeMouseClickListener(listener) {
-    this.clickListeners.delete(listener);
+    this.eventManager.removeEventListener(EventTypes.MOUSE_CLICK, listener);
   }
 
-  handleMouseMove(event) {
-    const rect = this.chartCanvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    // 기존 동작: 차트 인스턴스 업데이트
-    if (this.chartTestInstance) {
-      this.chartTestInstance.updateMousePosition(x, y);
-    }
-
-    // 구독된 모든 마우스 움직임 리스너에게 좌표 전달
-    this.mouseMoveListeners.forEach((listener) => {
-      if (typeof listener === "function") {
-        listener(x, y);
-      }
-    });
-  }
-
-  handleClick(event) {
-    const rect = this.chartCanvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    // 구독된 모든 클릭 리스너에게 좌표 전달
-    this.clickListeners.forEach((listener) => {
-      if (typeof listener === "function") {
-        listener(x, y);
-      }
-    });
-  }
-
-  handleMouseLeave(event) {
-    if (this.chartTestInstance) {
-      this.chartTestInstance.mouseLeave();
-    }
-  }
-
+  // 오버레이 관리 메서드
   storeOverlay(startX, startY, endX, endY) {
     this.overlaysArray.push({
       index: this.overlaysArray.length,
@@ -172,13 +134,14 @@ class MainCanvas {
       endX,
       endY,
     });
-    // console.log(this.overlaysArray);
   }
+
   getOverlaysArray() {
     return this.overlaysArray;
   }
 }
 
+// 페이지 로드 시 메인 캔버스 초기화
 window.onload = () => {
   const mainCanvasParent = document.querySelector("#mainCanvas");
   window.mainCanvas = new MainCanvas(mainCanvasParent);
