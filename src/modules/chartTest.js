@@ -816,25 +816,6 @@ export class ChartTest {
     // 데이터 구조가 초기화와 추가 로드 시 다를 수 있으므로 통일
     const candleData = data.datasets[0].data;
 
-    // 특정 타임스탬프 검색 (1734566400000 - 밀리초 단위로 변환)
-    const targetTimestamp = 1734566400000;
-    const targetData = candleData.find(
-      (candle) => candle.x === targetTimestamp
-    );
-
-    if (targetData) {
-      console.log("===== 타임스탬프 1734566400 데이터 발견 =====");
-      console.log("날짜:", new Date(targetTimestamp).toLocaleString());
-      console.log("캔들 데이터:", targetData);
-      console.log("시가:", targetData.o);
-      console.log("고가:", targetData.h);
-      console.log("저가:", targetData.l);
-      console.log("종가:", targetData.c);
-      console.log("거래량:", targetData.v);
-      console.log("캔들 방향:", targetData.o < targetData.c ? "상승" : "하락");
-      console.log("=====================================");
-    }
-
     // 각 바 색상 결정
     const backgroundColor = candleData.map((candle) => {
       // 캔들 데이터가 올바른 형식인지 확인
@@ -848,30 +829,6 @@ export class ChartTest {
       const openPrice = Number(candle.o);
       const closePrice = Number(candle.c);
       const isUp = openPrice <= closePrice;
-
-      // 특정 타임스탬프인 경우 추가 로깅
-      if (candle.x === targetTimestamp) {
-        // 시가와 종가의 타입 및 값 자세히 검사
-        console.log("===== 상세 데이터 검사 =====");
-        console.log("시가(o):", candle.o, "타입:", typeof candle.o);
-        console.log("종가(c):", candle.c, "타입:", typeof candle.c);
-        console.log("시가-종가 차이:", candle.o - candle.c);
-
-        // 명시적으로 숫자 변환 후 비교
-
-        console.log("숫자변환 후 - 시가:", openPrice, "종가:", closePrice);
-        console.log("숫자변환 후 - 시가<=종가:", openPrice <= closePrice);
-
-        // 부동소수점 고려한 비교 (소수점 6자리까지만 고려)
-        const roundedOpen = Math.round(openPrice * 1000000) / 1000000;
-        const roundedClose = Math.round(closePrice * 1000000) / 1000000;
-        console.log("반올림 후 - 시가:", roundedOpen, "종가:", roundedClose);
-        console.log("반올림 후 - 시가<=종가:", roundedOpen <= roundedClose);
-
-        // chartjs-chart-financial 라이브러리 내부 구현 방식 검사
-        console.log("isUp 값:", isUp);
-        console.log("===== 검사 완료 =====");
-      }
 
       // chartColors와 정확히 동일한 색상 사용 (캔들차트와 일치)
       return isUp
