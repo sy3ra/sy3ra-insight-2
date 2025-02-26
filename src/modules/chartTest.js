@@ -123,7 +123,10 @@ export class ChartTest {
           ticks: {
             color: "#d4d4d4",
             callback: function (value) {
-              return value.toFixed(2);
+              return value.toLocaleString("ko-KR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              });
             },
             padding: 8,
           },

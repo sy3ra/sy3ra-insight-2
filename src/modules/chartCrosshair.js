@@ -106,7 +106,10 @@ export class ChartCrosshair {
 
     // Y축(가격) 값 가져오기
     const yValue = chart.scales.y.getValueForPixel(y);
-    const formattedPrice = yValue.toFixed(2);
+    const formattedPrice = yValue.toLocaleString("ko-KR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
     // 레이블 그리기 설정
     ctx.font = this.labelFont;
