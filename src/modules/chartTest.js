@@ -12,8 +12,6 @@ import { tickerInstance } from "./ticker";
 import {
   calculateSlope,
   calculateDirection,
-  calculateExtendedLineIntersections,
-  calculateRayIntersection,
   drawLine,
 } from "../utilities/lineUtils.js";
 // Chart.js에 필요한 요소 등록

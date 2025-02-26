@@ -1,13 +1,6 @@
 import { tickerInstance } from "./ticker.js";
 import { EventTypes } from "../utilities/eventManager.js";
-import {
-  calculateSlope,
-  calculateDirection,
-  calculateExtendedLineIntersections,
-  calculateRayIntersection,
-  drawLine,
-  drawAnchorPoint,
-} from "../utilities/lineUtils.js";
+import { calculateSlope, calculateDirection } from "../utilities/lineUtils.js";
 
 export class DrawingTool {
   constructor(container, chartCanvas, drawingCanvas, overlayCanvas) {
@@ -373,9 +366,105 @@ export class DrawingTool {
   drawLine() {
     this.clearDrawingCanvas();
 
+    const { start, end } = this.points;
+    const chartArea = this.chartCtx.chart.chartArea;
+
+    // 시작점과 마우스 현재 위치(끝점)
+    let startPx = { x: start.x, y: start.y };
+    let endPx = { x: end.x, y: end.y };
+
+    // 마우스가 차트 영역을 벗어났는지 확인
+    const isEndOutsideChart =
+      endPx.x < chartArea.left ||
+      endPx.x > chartArea.right ||
+      endPx.y < chartArea.top ||
+      endPx.y > chartArea.bottom;
+
+    if (isEndOutsideChart) {
+      // 마우스가 차트 영역 밖에 있을 때 차트 경계와의 교차점 계산
+      const slope = calculateSlope(startPx.x, startPx.y, endPx.x, endPx.y);
+      const direction = calculateDirection(
+        startPx.x,
+        startPx.y,
+        endPx.x,
+        endPx.y
+      );
+
+      // 각 경계와의 교차점 계산
+      const intersections = [];
+
+      // 오른쪽 경계와의 교차점
+      if (direction.x > 0) {
+        // 오른쪽 방향이면
+        const yAtRight = startPx.y + slope * (chartArea.right - startPx.x);
+        if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
+          intersections.push({
+            x: chartArea.right,
+            y: yAtRight,
+            distance:
+              Math.pow(chartArea.right - startPx.x, 2) +
+              Math.pow(yAtRight - startPx.y, 2),
+          });
+        }
+      }
+
+      // 왼쪽 경계와의 교차점
+      if (direction.x < 0) {
+        // 왼쪽 방향이면
+        const yAtLeft = startPx.y + slope * (chartArea.left - startPx.x);
+        if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
+          intersections.push({
+            x: chartArea.left,
+            y: yAtLeft,
+            distance:
+              Math.pow(chartArea.left - startPx.x, 2) +
+              Math.pow(yAtLeft - startPx.y, 2),
+          });
+        }
+      }
+
+      // 상단 경계와의 교차점
+      if (direction.y < 0) {
+        // 위쪽 방향이면
+        const xAtTop = startPx.x + (chartArea.top - startPx.y) / slope;
+        if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
+          intersections.push({
+            x: xAtTop,
+            y: chartArea.top,
+            distance:
+              Math.pow(xAtTop - startPx.x, 2) +
+              Math.pow(chartArea.top - startPx.y, 2),
+          });
+        }
+      }
+
+      // 하단 경계와의 교차점
+      if (direction.y > 0) {
+        // 아래쪽 방향이면
+        const xAtBottom = startPx.x + (chartArea.bottom - startPx.y) / slope;
+        if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
+          intersections.push({
+            x: xAtBottom,
+            y: chartArea.bottom,
+            distance:
+              Math.pow(xAtBottom - startPx.x, 2) +
+              Math.pow(chartArea.bottom - startPx.y, 2),
+          });
+        }
+      }
+
+      // 가장 가까운 교차점 선택
+      if (intersections.length > 0) {
+        endPx = intersections.reduce((closest, current) =>
+          current.distance < closest.distance ? current : closest
+        );
+      }
+    }
+
+    // 선 그리기
     this.drawingCtx.beginPath();
-    this.drawingCtx.moveTo(this.points.start.x, this.points.start.y);
-    this.drawingCtx.lineTo(this.points.end.x, this.points.end.y);
+    this.drawingCtx.moveTo(startPx.x, startPx.y);
+    this.drawingCtx.lineTo(endPx.x, endPx.y);
     this.drawingCtx.lineWidth = 1;
     this.drawingCtx.strokeStyle = "white";
     this.drawingCtx.stroke();
