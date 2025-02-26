@@ -67,7 +67,7 @@ export class DrawingTool {
 
       button.appendChild(img);
       button.addEventListener("click", () => {
-        this.clickDrawTool(tool.name);
+        this.selectTool(tool.name);
       });
 
       toolPanel.appendChild(button);
@@ -75,21 +75,30 @@ export class DrawingTool {
   }
 
   // 도구 선택 및 그리기 모드 제어 메서드
-  clickDrawTool(toolType) {
-    console.log(`draw${toolType}`);
+  selectTool(toolName) {
+    // 이미 선택된 도구를 다시 클릭하면 선택 해제
+    if (this.currentTool === toolName) {
+      this.disableDrawingMode(true);
+      return;
+    }
+
+    // 이전 도구 선택 해제
+    if (this.currentTool) {
+      this.updateToolButtonStyles(this.currentTool, false);
+    }
+
+    // 완전한 상태 초기화
+    this.clearDrawingCanvas();
     this.resetDrawingState();
 
-    // 이전에 선택된 버튼에서 클래스 제거
-    this.updateToolButtonStyles(this.currentTool, false);
-
-    // 새로 선택된 버튼에 클래스 추가
-    this.updateToolButtonStyles(toolType, true);
-
-    this.currentTool = toolType;
+    // 새 도구 선택
+    this.currentTool = toolName;
+    this.updateToolButtonStyles(toolName, true);
     this.enableDrawingMode();
 
     // 이벤트 발생
-    this.dispatchEvent(EventTypes.TOOL_CHANGE, { tool: toolType });
+    this.dispatchEvent(EventTypes.TOOL_CHANGE, { tool: toolName });
+    console.log(`도구 선택됨: ${toolName}`);
   }
 
   // 도구 버튼 스타일 업데이트
@@ -120,12 +129,19 @@ export class DrawingTool {
 
   // 그리기 상태 초기화
   resetDrawingState() {
+    console.log("그리기 상태 초기화");
     this.clickCount = 0;
     this.currentPosition = { x: null, y: null };
     this.points = {
       start: { x: null, y: null },
       end: { x: null, y: null },
     };
+
+    // 티커 구독 상태 확인 및 해제
+    if (this.finishDrawLineHandler) {
+      tickerInstance.unsubscribe(this.finishDrawLineHandler);
+      this.finishDrawLineHandler = null;
+    }
   }
 
   // 그리기 모드 활성화 메서드
@@ -173,39 +189,35 @@ export class DrawingTool {
 
     if (add) {
       // 리스너 추가
-      if (typeof window.mainCanvas.addMouseMoveListener === "function") {
-        window.mainCanvas.addMouseMoveListener(this.boundOnMouseMove);
-      } else {
-        console.error("mouseMove 구독에 실패했습니다.");
-      }
-
-      if (typeof window.mainCanvas.addMouseClickListener === "function") {
-        window.mainCanvas.addMouseClickListener(this.boundOnMouseClick);
-      } else {
-        console.error("mouseClick 구독에 실패했습니다.");
-      }
-
-      // 추가: 취소 이벤트 구독
       if (typeof window.mainCanvas.addEventListener === "function") {
+        window.mainCanvas.addEventListener(
+          EventTypes.MOUSE_MOVE,
+          this.boundOnMouseMove
+        );
+        window.mainCanvas.addEventListener(
+          EventTypes.MOUSE_CLICK,
+          this.boundOnMouseClick
+        );
         window.mainCanvas.addEventListener(
           EventTypes.DRAWING_CANCEL,
           this.cancelDrawing.bind(this)
         );
+      } else {
+        console.error("이벤트 구독에 실패했습니다.");
       }
 
       console.log("마우스 이벤트 구독 시작");
     } else {
       // 리스너 제거
-      if (typeof window.mainCanvas.removeMouseMoveListener === "function") {
-        window.mainCanvas.removeMouseMoveListener(this.boundOnMouseMove);
-      }
-
-      if (typeof window.mainCanvas.removeMouseClickListener === "function") {
-        window.mainCanvas.removeMouseClickListener(this.boundOnMouseClick);
-      }
-
-      // 추가: 취소 이벤트 구독 해제
       if (typeof window.mainCanvas.removeEventListener === "function") {
+        window.mainCanvas.removeEventListener(
+          EventTypes.MOUSE_MOVE,
+          this.boundOnMouseMove
+        );
+        window.mainCanvas.removeEventListener(
+          EventTypes.MOUSE_CLICK,
+          this.boundOnMouseClick
+        );
         window.mainCanvas.removeEventListener(
           EventTypes.DRAWING_CANCEL,
           this.cancelDrawing.bind(this)
@@ -251,7 +263,7 @@ export class DrawingTool {
     if (!this.isDrawingMode) return;
 
     console.log("클릭 시 도구:", this.currentTool); // 디버깅용 로그 추가
-
+    console.log("클릭 시 클릭 카운트:", this.clickCount); // 디버깅용 로그 추가
     this.clickCount++;
 
     // 데이터 좌표로 변환
@@ -277,7 +289,36 @@ export class DrawingTool {
     }
     // 두 번째 클릭: 끝점 설정 및 그리기 완료
     else if (this.clickCount === 2) {
+      // 클릭한 지점이 차트 영역 밖인지 확인
+      const chartArea = this.chartCtx.chart.chartArea;
       const { x: pixelX, y: pixelY } = this.getPixelForValue(dataX, dataY);
+
+      // 차트 영역 밖인 경우 그리기 취소
+      if (
+        pixelX < chartArea.left ||
+        pixelX > chartArea.right ||
+        pixelY < chartArea.top ||
+        pixelY > chartArea.bottom
+      ) {
+        console.log("차트 영역 밖 클릭으로 그리기 취소");
+        this.clearDrawingCanvas();
+        this.clickCount = 0;
+
+        // 티커에서 업데이트 핸들러 제거
+        if (this.finishDrawLineHandler) {
+          tickerInstance.unsubscribe(this.finishDrawLineHandler);
+          this.finishDrawLineHandler = null;
+        }
+
+        this.dispatchEvent(EventTypes.DRAWING_CANCEL, {
+          reason: "차트 영역 밖 클릭",
+        });
+
+        this.disableDrawingMode(true);
+
+        return;
+      }
+
       this.points.end.x = pixelX;
       this.points.end.y = pixelY;
 
@@ -403,6 +444,7 @@ export class DrawingTool {
     this.isDrawingMode = false;
     this.setChartZoomPanState(true);
     this.setupMouseListeners(false);
+    this.resetDrawingState();
 
     // 선택된 도구 버튼 스타일은 완전히 그리기를 마칠 때만 업데이트
     if (resetTool) {
@@ -479,17 +521,17 @@ export class DrawingTool {
     return this;
   }
 
-  // 그리기 취소 메서드 추가
+  // 그리기 취소 메서드 수정
   cancelDrawing() {
     console.log("그리기 취소됨");
 
-    // 그리기 캔버스 지우기
+    // 드로잉 캔버스 클리어
     this.clearDrawingCanvas();
 
-    // 그리기 상태 초기화
+    // 모든 상태 완전 초기화
     this.resetDrawingState();
 
-    // 그리기 모드 비활성화 (도구 초기화)
+    // 그리기 모드 비활성화 및 도구 선택 초기화
     this.disableDrawingMode(true);
 
     // 이벤트 발생

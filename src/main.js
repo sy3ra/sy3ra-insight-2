@@ -7,46 +7,44 @@ class MainCanvas {
     this.parent = parent;
     this.overlaysArray = [];
 
-    // 캔버스 초기화
     this.initializeCanvases();
-
-    // 이벤트 매니저 초기화
-    this.eventManager = new EventManager(this.chartCanvas, null);
-
-    // 차트 및 드로잉 도구 초기화
+    this.initializeEventManager();
     this.initializeComponents();
-
-    // 스테이지 크기 설정
+    this.setupEventListeners();
     this.resize();
-
-    // 리사이즈 이벤트 리스너 등록
-    this.eventManager.addEventListener(
-      EventTypes.RESIZE,
-      this.resize.bind(this)
-    );
   }
 
-  // 캔버스 생성 및 초기화
+  // 캔버스 초기화
   initializeCanvases() {
-    // 차트 캔버스
-    this.chartCanvas = this.createCanvas("chartCanvas");
-    this.chartCtx = this.chartCanvas.getContext("2d");
+    // 필요한 모든 캔버스 생성
+    this.canvasElements = {
+      chart: this.createCanvas("chartCanvas"),
+      volumeChart: this.createCanvas("volumeChartCanvas"),
+      crosshair: this.createCanvas("crosshairCanvas"),
+      overlay: this.createCanvas("overlayCanvas"),
+      drawing: this.createCanvas("drawingCanvas"),
+    };
 
-    // 볼륨 차트 캔버스
-    this.volumeChartCanvas = this.createCanvas("volumeChartCanvas");
-    this.volumeChartCtx = this.volumeChartCanvas.getContext("2d");
+    // 컨텍스트 초기화
+    this.contexts = {
+      chart: this.canvasElements.chart.getContext("2d"),
+      volumeChart: this.canvasElements.volumeChart.getContext("2d"),
+      crosshair: this.canvasElements.crosshair.getContext("2d"),
+      overlay: this.canvasElements.overlay.getContext("2d"),
+      drawing: this.canvasElements.drawing.getContext("2d"),
+    };
 
-    // 크로스헤어 캔버스
-    this.crosshairCanvas = this.createCanvas("crosshairCanvas");
-    this.crosshairCtx = this.crosshairCanvas.getContext("2d");
-
-    // 오버레이 캔버스
-    this.overlayCanvas = this.createCanvas("overlayCanvas");
-    this.overlayCtx = this.overlayCanvas.getContext("2d");
-
-    // 그리기 캔버스
-    this.drawingCanvas = this.createCanvas("drawingCanvas");
-    this.drawingCtx = this.drawingCanvas.getContext("2d");
+    // 기존 코드와의 호환성을 위해 별도 변수로도 할당
+    this.chartCanvas = this.canvasElements.chart;
+    this.chartCtx = this.contexts.chart;
+    this.volumeChartCanvas = this.canvasElements.volumeChart;
+    this.volumeChartCtx = this.contexts.volumeChart;
+    this.crosshairCanvas = this.canvasElements.crosshair;
+    this.crosshairCtx = this.contexts.crosshair;
+    this.overlayCanvas = this.canvasElements.overlay;
+    this.overlayCtx = this.contexts.overlay;
+    this.drawingCanvas = this.canvasElements.drawing;
+    this.drawingCtx = this.contexts.drawing;
   }
 
   // 캔버스 요소 생성 유틸리티
@@ -57,14 +55,27 @@ class MainCanvas {
     return canvas;
   }
 
+  // 이벤트 매니저 초기화
+  initializeEventManager() {
+    this.eventManager = new EventManager(this.chartCanvas, null);
+  }
+
+  // 이벤트 리스너 설정
+  setupEventListeners() {
+    this.eventManager.addEventListener(
+      EventTypes.RESIZE,
+      this.resize.bind(this)
+    );
+  }
+
   // 컴포넌트 초기화
   initializeComponents() {
     // 차트 인스턴스 생성
     this.chartTestInstance = new ChartTest(
       this.chartCtx,
-      this.crosshairCtx,
-      this.overlayCtx,
-      this.volumeChartCtx
+      this.contexts.crosshair,
+      this.contexts.overlay,
+      this.contexts.volumeChart
     );
 
     // 드로잉 인스턴스 생성
@@ -72,8 +83,8 @@ class MainCanvas {
     this.drawingInstance = new DrawingTool(
       toolPanelContainer,
       this.chartTestInstance,
-      this.drawingCanvas,
-      this.overlayCanvas
+      this.canvasElements.drawing,
+      this.canvasElements.overlay
     );
 
     // EventManager에 차트 인스턴스 설정 - 드로잉 인스턴스 생성 후에 설정
@@ -87,36 +98,38 @@ class MainCanvas {
     this.stageWidth = this.parent.clientWidth;
     this.stageHeight = this.parent.clientHeight;
 
-    // 모든 캔버스의 크기 설정
-    [
-      this.chartCanvas,
-      this.crosshairCanvas,
-      this.overlayCanvas,
-      this.drawingCanvas,
-      this.volumeChartCanvas,
-    ].forEach((canvas) => {
+    // 모든 캔버스 요소에 대해 크기 설정
+    Object.values(this.canvasElements).forEach((canvas) => {
       canvas.width = this.stageWidth * 2;
       canvas.height = this.stageHeight * 2;
     });
 
-    // 모든 컨텍스트의 스케일 설정
-    [
-      this.chartCtx,
-      this.crosshairCtx,
-      this.overlayCtx,
-      this.drawingCtx,
-      this.volumeChartCtx,
-    ].forEach((ctx) => {
+    // 모든 컨텍스트 스케일 설정
+    Object.values(this.contexts).forEach((ctx) => {
       ctx.scale(2, 2);
     });
 
     // 차트 재렌더링
+    this.renderChartIfReady();
+  }
+
+  // 차트 렌더링 조건부 실행
+  renderChartIfReady() {
     if (this.chartTestInstance?.render) {
       this.chartTestInstance.render();
     }
   }
 
-  // 이벤트 리스너 관리 메서드 - 간소화
+  // 이벤트 리스너 관리를 단순화한 통합 메서드
+  addEventListener(type, listener) {
+    this.eventManager.addEventListener(type, listener);
+  }
+
+  removeEventListener(type, listener) {
+    this.eventManager.removeEventListener(type, listener);
+  }
+
+  // 기존 메서드들 호환성 유지
   addMouseMoveListener(listener) {
     this.eventManager.addEventListener(EventTypes.MOUSE_MOVE, listener);
   }
@@ -147,15 +160,6 @@ class MainCanvas {
 
   getOverlaysArray() {
     return this.overlaysArray;
-  }
-
-  // 이벤트 리스너 관리 메서드에 추가
-  addEventListener(type, listener) {
-    this.eventManager.addEventListener(type, listener);
-  }
-
-  removeEventListener(type, listener) {
-    this.eventManager.removeEventListener(type, listener);
   }
 }
 

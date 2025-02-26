@@ -14,16 +14,27 @@ export class ChartCrosshair {
     this.boundDraw = this.draw.bind(this);
     this.isSubscribed = false;
 
-    // 레이블 스타일 설정
-    this.labelBackgroundColor = "#2d3c3d";
-    this.labelTextColor = "#ffffff";
-    this.labelFont = "12px Arial";
-    this.labelPadding = 10;
+    // 스타일 설정
+    this.initializeStyles();
+  }
 
-    // 고정 레이블 크기 설정
-    this.xLabelFixedWidth = 180; // 날짜 레이블 고정 너비
-    this.yLabelFixedWidth = 80; // 가격 레이블 고정 너비
-    this.labelFixedHeight = 24; // 레이블 고정 높이
+  // 스타일 초기화
+  initializeStyles() {
+    // 레이블 스타일
+    this.labelStyles = {
+      backgroundColor: "#2d3c3d",
+      textColor: "#ffffff",
+      font: "12px Arial",
+      padding: 10,
+      borderRadius: 4,
+    };
+
+    // 레이블 크기
+    this.labelDimensions = {
+      xWidth: 180, // 날짜 레이블 너비
+      yWidth: 80, // 가격 레이블 너비
+      height: 24, // 레이블 높이
+    };
   }
 
   draw() {
@@ -78,93 +89,108 @@ export class ChartCrosshair {
   // 값 레이블 그리기 메서드
   drawValueLabels(x, y) {
     const { ctx, chart } = this;
-
-    // 차트 영역 확인
     const chartArea = chart.chartArea;
-    if (
-      !chartArea ||
-      x < chartArea.left ||
-      x > chartArea.right ||
-      y < chartArea.top ||
-      y > chartArea.bottom
-    ) {
-      return;
-    }
 
-    // X축(시간) 값 가져오기
+    // 차트 영역 밖이면 그리지 않음
+    if (!this.isInChartArea(x, y, chartArea)) return;
+
+    // 값 가져오기
     const xValue = chart.scales.x.getValueForPixel(x);
-    const xDate = new Date(xValue);
+    const yValue = chart.scales.y.getValueForPixel(y);
 
-    // 날짜 포맷팅
-    const dateOptions = {
+    // 값 포맷팅
+    const formattedDate = this.formatDate(xValue);
+    const formattedPrice = this.formatPrice(yValue);
+
+    // 텍스트 렌더링 스타일 설정
+    this.setTextRenderingStyle();
+
+    // X축 레이블 그리기
+    this.drawXAxisLabel(x, chartArea.bottom, formattedDate);
+
+    // Y축 레이블 그리기
+    this.drawYAxisLabel(chartArea.right, y, formattedPrice);
+  }
+
+  // 차트 영역 확인
+  isInChartArea(x, y, chartArea) {
+    return (
+      chartArea &&
+      x >= chartArea.left &&
+      x <= chartArea.right &&
+      y >= chartArea.top &&
+      y <= chartArea.bottom
+    );
+  }
+
+  // 날짜 포맷팅
+  formatDate(timestamp) {
+    const date = new Date(timestamp);
+    const options = {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
     };
-    const formattedDate = xDate.toLocaleDateString("ko-KR", dateOptions);
+    return date.toLocaleDateString("ko-KR", options);
+  }
 
-    // Y축(가격) 값 가져오기
-    const yValue = chart.scales.y.getValueForPixel(y);
-    const formattedPrice = yValue.toLocaleString("ko-KR", {
+  // 가격 포맷팅
+  formatPrice(value) {
+    return value.toLocaleString("ko-KR", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+  }
 
-    // 레이블 그리기 설정
-    ctx.font = this.labelFont;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
+  // 텍스트 렌더링 스타일 설정
+  setTextRenderingStyle() {
+    this.ctx.font = this.labelStyles.font;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "alphabetic";
+  }
 
-    // 둥근 모서리 반경 설정
-    const borderRadius = 4;
+  // X축 레이블 그리기
+  drawXAxisLabel(x, bottomY, text) {
+    const { xWidth: width, height } = this.labelDimensions;
+    const y = bottomY + 15;
 
-    // X축 레이블 그리기 (하단)
-    const xLabelText = formattedDate;
-    // 고정 너비 사용
-    const xLabelWidth = this.xLabelFixedWidth;
-    const xLabelHeight = this.labelFixedHeight;
-    const xLabelX = x;
-    const xLabelY = chartArea.bottom + 15;
-
-    // X축 레이블 배경 (둥근 모서리)
-    ctx.fillStyle = this.labelBackgroundColor;
+    // 레이블 배경
+    this.ctx.fillStyle = this.labelStyles.backgroundColor;
     this.drawRoundedRect(
-      ctx,
-      xLabelX - xLabelWidth / 2,
-      xLabelY - xLabelHeight / 2,
-      xLabelWidth,
-      xLabelHeight,
-      borderRadius
+      this.ctx,
+      x - width / 2,
+      y - height / 2,
+      width,
+      height,
+      this.labelStyles.borderRadius
     );
 
-    // X축 레이블 텍스트 - 수직 위치 미세 조정
-    ctx.fillStyle = this.labelTextColor;
-    ctx.fillText(xLabelText, xLabelX, xLabelY + 4);
+    // 레이블 텍스트
+    this.ctx.fillStyle = this.labelStyles.textColor;
+    this.ctx.fillText(text, x, y + 4);
+  }
 
-    // Y축 레이블 그리기 (우측)
-    const yLabelText = formattedPrice;
-    // 고정 너비 사용
-    const yLabelWidth = this.yLabelFixedWidth;
-    const yLabelHeight = this.labelFixedHeight;
-    const yLabelX = chartArea.right + 45;
-    const yLabelY = y;
+  // Y축 레이블 그리기
+  drawYAxisLabel(rightX, y, text) {
+    const { yWidth: width, height } = this.labelDimensions;
+    const x = rightX + 45;
 
-    // Y축 레이블 배경 (둥근 모서리)
-    ctx.fillStyle = this.labelBackgroundColor;
+    // 레이블 배경
+    this.ctx.fillStyle = this.labelStyles.backgroundColor;
     this.drawRoundedRect(
-      ctx,
-      yLabelX - yLabelWidth / 2,
-      yLabelY - yLabelHeight / 2,
-      yLabelWidth,
-      yLabelHeight,
-      borderRadius
+      this.ctx,
+      x - width / 2,
+      y - height / 2,
+      width,
+      height,
+      this.labelStyles.borderRadius
     );
 
-    // Y축 레이블 텍스트 - 수직 위치 미세 조정
-    ctx.fillStyle = this.labelTextColor;
-    ctx.fillText(yLabelText, yLabelX, yLabelY + 4);
+    // 레이블 텍스트
+    this.ctx.fillStyle = this.labelStyles.textColor;
+    this.ctx.fillText(text, x, y + 4);
   }
 
   // 둥근 모서리 사각형 그리기 헬퍼 메서드
@@ -194,13 +220,13 @@ export class ChartCrosshair {
     // 레이블 영역 계산
     // X축 레이블 영역 (하단)
     const xLabelY = chartArea.bottom + 15;
-    const xLabelHeight = this.labelFixedHeight;
+    const xLabelHeight = this.labelDimensions.height;
     const xLabelTop = xLabelY - xLabelHeight / 2;
     const xLabelBottom = xLabelY + xLabelHeight / 2;
 
     // Y축 레이블 영역 (우측)
     const yLabelX = chartArea.right + 45;
-    const yLabelWidth = this.yLabelFixedWidth;
+    const yLabelWidth = this.labelDimensions.yWidth;
     const yLabelLeft = yLabelX - yLabelWidth / 2;
     const yLabelRight = yLabelX + yLabelWidth / 2;
 

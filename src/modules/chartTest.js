@@ -46,54 +46,73 @@ export class ChartTest {
 
   async initialize() {
     try {
-      // 초기 데이터 가져오기
       const data = await this.handleFetchData();
-      const volumeData = this.formatVolumeData(data);
-      if (!data || !data.labels || !data.labels.length) {
+      if (!this.isValidData(data)) {
         console.error("차트 데이터가 유효하지 않습니다.");
         return;
       }
 
-      // 데이터의 가장 초기 시간과 최신 시간 설정
-      this.earliestX = data.labels[0] - 1000 * 60 * 60 * 24 * 3; // 3일의 여유 마진 추가
-      const latestX = data.labels[data.labels.length - 1];
+      const volumeData = this.formatVolumeData(data);
 
-      // 차트 옵션 설정
-      const chartOptions = this.createChartOptions(this.earliestX, latestX);
-      const volumeChartOptions = this.createVolumeChartOptions(
-        this.earliestX,
-        latestX
-      );
+      // 데이터 시간 범위 설정
+      this.setupTimeRange(data);
 
-      // 차트 초기화
-      this.chart = new Chart(this.chartCtx, {
-        type: "candlestick",
-        data: data,
-        options: chartOptions,
-      });
+      // 차트 옵션 및 인스턴스 생성
+      this.createCharts(data, volumeData);
 
-      // 볼륨 차트 초기화
-      this.volumeChart = new Chart(this.volumeChartCtx, {
-        type: "bar",
-        data: volumeData,
-        options: volumeChartOptions,
-      });
-      // 일반 배열로 초기 데이터 설정
+      // 초기 데이터 설정
       this.labelsStack = [...this.chart.data.labels];
       this.dataStack = [...this.chart.data.datasets[0].data];
 
       // 크로스헤어 초기화
-      this.crosshair = new ChartCrosshair(
-        this.crosshairCtx,
-        this.chart,
-        this.volumeChart
-      );
+      this.initializeCrosshair();
 
       // 차트 렌더링
       this.render();
     } catch (error) {
       console.error("차트 초기화 중 오류 발생:", error);
     }
+  }
+
+  // 데이터 유효성 검증
+  isValidData(data) {
+    return data && data.labels && data.labels.length > 0;
+  }
+
+  // 시간 범위 설정
+  setupTimeRange(data) {
+    this.earliestX = data.labels[0] - 1000 * 60 * 60 * 24 * 3; // 3일 여유 마진
+  }
+
+  // 차트 생성
+  createCharts(data, volumeData) {
+    const latestX = data.labels[data.labels.length - 1];
+    const chartOptions = this.createChartOptions(this.earliestX, latestX);
+    const volumeChartOptions = this.createVolumeChartOptions(
+      this.earliestX,
+      latestX
+    );
+
+    this.chart = new Chart(this.chartCtx, {
+      type: "candlestick",
+      data: data,
+      options: chartOptions,
+    });
+
+    this.volumeChart = new Chart(this.volumeChartCtx, {
+      type: "bar",
+      data: volumeData,
+      options: volumeChartOptions,
+    });
+  }
+
+  // 크로스헤어 초기화
+  initializeCrosshair() {
+    this.crosshair = new ChartCrosshair(
+      this.crosshairCtx,
+      this.chart,
+      this.volumeChart
+    );
   }
 
   // 차트 옵션 생성 메서드
@@ -412,56 +431,17 @@ export class ChartTest {
 
   // 디바운스된 버전의 checkLimitReached 함수
   async debouncedCheckLimitReached() {
-    // 이전 타이머가 존재하면 취소
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
 
-    // 이미 로딩 중이라면 함수 종료
-    if (this.isLoading) {
-      return;
-    }
+    if (this.isLoading) return;
 
     this.isLoading = true;
     this.showLoadingSpinner();
 
     try {
-      // 데이터 가져오기
-      const formattedData = await this.handleFetchMoreData();
-
-      // 새 데이터가 있을 경우만 처리
-      if (formattedData.labels.length > 0) {
-        // 일반 배열로 데이터 추가
-        this.labelsStack = [...formattedData.labels, ...this.labelsStack];
-        this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
-
-        this.chart.data.labels = this.labelsStack;
-        this.chart.data.datasets[0].data = this.dataStack;
-
-        // 볼륨 차트 데이터도 업데이트
-        if (this.volumeChart) {
-          const volumeData = this.formatVolumeData({
-            labels: this.labelsStack,
-            datasets: [{ data: this.dataStack }],
-          });
-
-          this.volumeChart.data.labels = volumeData.labels;
-          this.volumeChart.data.datasets = volumeData.datasets;
-        }
-
-        this.earliestX = this.labelsStack[0];
-        this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
-
-        // 볼륨 차트의 스케일도 업데이트
-        if (this.volumeChart) {
-          this.volumeChart.options.scales.x.min = this.earliestX;
-        }
-
-        this.chart.update("none");
-        if (this.volumeChart) {
-          this.volumeChart.update("none");
-        }
-      }
+      await this.loadMoreData();
     } catch (error) {
       console.error("추가 데이터 로딩 중 오류:", error);
     } finally {
@@ -469,6 +449,60 @@ export class ChartTest {
         this.hideLoadingSpinner();
         this.isLoading = false;
       }, 500);
+    }
+  }
+
+  // 추가 데이터 로딩 로직 분리
+  async loadMoreData() {
+    const formattedData = await this.handleFetchMoreData();
+
+    if (formattedData.labels.length > 0) {
+      // 데이터 추가
+      this.appendNewData(formattedData);
+
+      // 차트 범위 업데이트
+      this.updateChartLimits();
+
+      // 차트 업데이트
+      this.updateCharts();
+    }
+  }
+
+  // 새 데이터 추가
+  appendNewData(formattedData) {
+    this.labelsStack = [...formattedData.labels, ...this.labelsStack];
+    this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
+
+    this.chart.data.labels = this.labelsStack;
+    this.chart.data.datasets[0].data = this.dataStack;
+
+    // 볼륨 차트 데이터 업데이트
+    if (this.volumeChart) {
+      const volumeData = this.formatVolumeData({
+        labels: this.labelsStack,
+        datasets: [{ data: this.dataStack }],
+      });
+
+      this.volumeChart.data.labels = volumeData.labels;
+      this.volumeChart.data.datasets = volumeData.datasets;
+    }
+  }
+
+  // 차트 범위 업데이트
+  updateChartLimits() {
+    this.earliestX = this.labelsStack[0];
+    this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
+
+    if (this.volumeChart) {
+      this.volumeChart.options.scales.x.min = this.earliestX;
+    }
+  }
+
+  // 차트 업데이트
+  updateCharts() {
+    this.chart.update("none");
+    if (this.volumeChart) {
+      this.volumeChart.update("none");
     }
   }
 
@@ -483,17 +517,7 @@ export class ChartTest {
   // 스피너 생성 메서드
   createSpinner() {
     this.spinner = document.createElement("div");
-    this.spinner.style.position = "absolute";
-    this.spinner.style.left = "20px";
-    this.spinner.style.top = "50%";
-    this.spinner.style.transform = "translateY(-50%)";
-    this.spinner.style.width = "40px";
-    this.spinner.style.height = "40px";
-    this.spinner.style.border = "4px solid rgba(255, 255, 255, 0.3)";
-    this.spinner.style.borderTop = "4px solid #fff";
-    this.spinner.style.borderRadius = "50%";
-    this.spinner.style.animation = "spin 1s linear infinite";
-
+    this.setupSpinnerStyles();
     this.createSpinnerKeyframes();
     this.chartCtx.canvas.parentElement.appendChild(this.spinner);
   }
@@ -512,6 +536,24 @@ export class ChartTest {
     }
   }
 
+  // 스피너 스타일 설정
+  setupSpinnerStyles() {
+    const styles = {
+      position: "absolute",
+      left: "20px",
+      top: "50%",
+      transform: "translateY(-50%)",
+      width: "40px",
+      height: "40px",
+      border: "4px solid rgba(255, 255, 255, 0.3)",
+      borderTop: "4px solid #fff",
+      borderRadius: "50%",
+      animation: "spin 1s linear infinite",
+    };
+
+    Object.assign(this.spinner.style, styles);
+  }
+
   // 로딩스피너를 숨기는 메서드
   hideLoadingSpinner() {
     if (this.spinner) {
@@ -521,241 +563,289 @@ export class ChartTest {
 
   // 공통 코어 함수 추가
   _drawOverlays(overlays, fullClear = false) {
-    // console.log("overlays", overlays);
     // 오버레이 유효성 검사
-    if (!overlays || !Array.isArray(overlays) || overlays.length === 0) return;
+    if (!this.isValidOverlaysArray(overlays)) return;
 
-    // 오버레이 캔버스 초기화 (fullClear 파라미터에 따라 전체 또는 절반 크기로 초기화)
+    // 캔버스 클리어
+    this.clearOverlayCanvas(fullClear);
+
+    // 각 오버레이 그리기
+    overlays.forEach((overlay) => {
+      if (!overlay) return;
+      this.drawOverlayByType(overlay);
+    });
+  }
+
+  // 오버레이 배열 유효성 검사
+  isValidOverlaysArray(overlays) {
+    return overlays && Array.isArray(overlays) && overlays.length > 0;
+  }
+
+  // 오버레이 캔버스 클리어
+  clearOverlayCanvas(fullClear) {
     const width = fullClear
       ? this.overlayCtx.canvas.width
       : this.overlayCtx.canvas.width / 2;
     const height = fullClear
       ? this.overlayCtx.canvas.height
       : this.overlayCtx.canvas.height / 2;
-
     this.overlayCtx.clearRect(0, 0, width, height);
+  }
 
-    // 저장된 모든 오버레이 다시 그리기
-    overlays.forEach((overlay) => {
-      if (!overlay) return;
+  // 오버레이 타입에 따라 그리기
+  drawOverlayByType(overlay) {
+    const { startX, startY, endX, endY, lineType } = overlay;
+    const chartArea = this.chart.chartArea;
 
-      const { startX, startY, endX, endY, lineType } = overlay;
-      const chartArea = this.chart.chartArea;
+    switch (lineType) {
+      case "HorizontalLine":
+        this.drawHorizontalLine(startY, chartArea);
+        break;
+      case "VerticalLine":
+        this.drawVerticalLine(startX, chartArea);
+        break;
+      case "ExtendedLine":
+        this.drawExtendedLine(startX, startY, endX, endY, chartArea);
+        break;
+      case "Ray":
+        this.drawRay(startX, startY, endX, endY, chartArea);
+        break;
+      default:
+        this.drawSimpleLine(startX, startY, endX, endY, chartArea);
+        break;
+    }
+  }
 
-      if (lineType === "HorizontalLine") {
-        const yPixel = this.chart.scales.y.getPixelForValue(startY);
-        drawLine(
-          this.overlayCtx,
-          chartArea.left,
-          yPixel,
-          chartArea.right,
-          yPixel,
-          "red",
-          1,
-          chartArea
-        );
-      } else if (lineType === "VerticalLine") {
-        const xPixel = this.chart.scales.x.getPixelForValue(startX);
-        drawLine(
-          this.overlayCtx,
-          xPixel,
-          chartArea.top,
-          xPixel,
-          chartArea.bottom,
-          "red",
-          1,
-          chartArea
-        );
-      } else if (lineType === "ExtendedLine") {
-        const startXPixel = this.chart.scales.x.getPixelForValue(startX);
-        const endXPixel = this.chart.scales.x.getPixelForValue(endX);
-        const startYPixel = this.chart.scales.y.getPixelForValue(startY);
-        const endYPixel = this.chart.scales.y.getPixelForValue(endY);
+  // 수평선 그리기
+  drawHorizontalLine(yValue, chartArea) {
+    const yPixel = this.chart.scales.y.getPixelForValue(yValue);
+    drawLine(
+      this.overlayCtx,
+      chartArea.left,
+      yPixel,
+      chartArea.right,
+      yPixel,
+      "red",
+      1,
+      chartArea
+    );
+  }
 
-        const slope = calculateSlope(
-          startXPixel,
-          startYPixel,
-          endXPixel,
-          endYPixel
-        );
+  // 수직선 그리기
+  drawVerticalLine(xValue, chartArea) {
+    const xPixel = this.chart.scales.x.getPixelForValue(xValue);
+    drawLine(
+      this.overlayCtx,
+      xPixel,
+      chartArea.top,
+      xPixel,
+      chartArea.bottom,
+      "red",
+      1,
+      chartArea
+    );
+  }
 
-        let startPx, endPx;
+  // 확장된 선 그리기
+  drawExtendedLine(startX, startY, endX, endY, chartArea) {
+    const startXPixel = this.chart.scales.x.getPixelForValue(startX);
+    const endXPixel = this.chart.scales.x.getPixelForValue(endX);
+    const startYPixel = this.chart.scales.y.getPixelForValue(startY);
+    const endYPixel = this.chart.scales.y.getPixelForValue(endY);
 
-        if (slope === Infinity || slope === -Infinity) {
-          startPx = { x: startXPixel, y: chartArea.top };
-          endPx = { x: startXPixel, y: chartArea.bottom };
-        } else if (slope === 0) {
-          startPx = { x: chartArea.left, y: startYPixel };
-          endPx = { x: chartArea.right, y: startYPixel };
-        } else {
-          const yAtLeft = startYPixel - slope * (startXPixel - chartArea.left);
-          const yAtRight =
-            startYPixel + slope * (chartArea.right - startXPixel);
+    const slope = calculateSlope(
+      startXPixel,
+      startYPixel,
+      endXPixel,
+      endYPixel
+    );
 
-          const xAtTop = startXPixel + (chartArea.top - startYPixel) / slope;
-          const xAtBottom =
-            startXPixel + (chartArea.bottom - startYPixel) / slope;
+    let startPx, endPx;
 
-          if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
-            startPx = { x: chartArea.left, y: yAtLeft };
-          } else if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
-            startPx = { x: xAtTop, y: chartArea.top };
-          } else {
-            startPx = { x: chartArea.left, y: yAtLeft };
-          }
+    if (slope === Infinity || slope === -Infinity) {
+      startPx = { x: startXPixel, y: chartArea.top };
+      endPx = { x: startXPixel, y: chartArea.bottom };
+    } else if (slope === 0) {
+      startPx = { x: chartArea.left, y: startYPixel };
+      endPx = { x: chartArea.right, y: startYPixel };
+    } else {
+      // ... (기존 계산 로직)
+      const yAtLeft = startYPixel - slope * (startXPixel - chartArea.left);
+      const yAtRight = startYPixel + slope * (chartArea.right - startXPixel);
 
-          if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
-            endPx = { x: chartArea.right, y: yAtRight };
-          } else if (
-            xAtBottom >= chartArea.left &&
-            xAtBottom <= chartArea.right
-          ) {
-            endPx = { x: xAtBottom, y: chartArea.bottom };
-          } else {
-            endPx = { x: chartArea.right, y: yAtRight };
-          }
-        }
+      const xAtTop = startXPixel + (chartArea.top - startYPixel) / slope;
+      const xAtBottom = startXPixel + (chartArea.bottom - startYPixel) / slope;
 
-        drawLine(
-          this.overlayCtx,
-          startPx.x,
-          startPx.y,
-          endPx.x,
-          endPx.y,
-          "red",
-          1,
-          chartArea
-        );
-      } else if (lineType === "Ray") {
-        const startXPixel = this.chart.scales.x.getPixelForValue(startX);
-        const endXPixel = this.chart.scales.x.getPixelForValue(endX);
-        const startYPixel = this.chart.scales.y.getPixelForValue(startY);
-        const endYPixel = this.chart.scales.y.getPixelForValue(endY);
+      // ... (기존 좌표 계산 로직)
+      if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
+        startPx = { x: chartArea.left, y: yAtLeft };
+      } else if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
+        startPx = { x: xAtTop, y: chartArea.top };
+      } else {
+        startPx = { x: chartArea.left, y: yAtLeft };
+      }
 
-        const slope = calculateSlope(
-          startXPixel,
-          startYPixel,
-          endXPixel,
-          endYPixel
-        );
+      if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
+        endPx = { x: chartArea.right, y: yAtRight };
+      } else if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
+        endPx = { x: xAtBottom, y: chartArea.bottom };
+      } else {
+        endPx = { x: chartArea.right, y: yAtRight };
+      }
+    }
 
-        const direction = calculateDirection(
-          startXPixel,
-          startYPixel,
-          endXPixel,
-          endYPixel
-        );
+    drawLine(
+      this.overlayCtx,
+      startPx.x,
+      startPx.y,
+      endPx.x,
+      endPx.y,
+      "red",
+      1,
+      chartArea
+    );
+  }
 
-        let endPx;
+  // 반직선(Ray) 그리기
+  drawRay(startX, startY, endX, endY, chartArea) {
+    const startXPixel = this.chart.scales.x.getPixelForValue(startX);
+    const endXPixel = this.chart.scales.x.getPixelForValue(endX);
+    const startYPixel = this.chart.scales.y.getPixelForValue(startY);
+    const endYPixel = this.chart.scales.y.getPixelForValue(endY);
 
-        if (slope === Infinity || slope === -Infinity) {
-          endPx = {
-            x: startXPixel,
-            y: direction.y > 0 ? chartArea.bottom : chartArea.top,
-          };
-        } else if (slope === 0) {
-          endPx = {
-            x: direction.x > 0 ? chartArea.right : chartArea.left,
-            y: startYPixel,
-          };
-        } else {
-          const intersections = [];
+    const slope = calculateSlope(
+      startXPixel,
+      startYPixel,
+      endXPixel,
+      endYPixel
+    );
 
-          const yAtRight =
-            startYPixel + slope * (chartArea.right - startXPixel);
-          if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
-            intersections.push({
-              x: chartArea.right,
-              y: yAtRight,
-              distance:
-                Math.pow(chartArea.right - startXPixel, 2) +
-                Math.pow(yAtRight - startYPixel, 2),
-              direction: { x: 1, y: yAtRight > startYPixel ? 1 : -1 },
-            });
-          }
+    const direction = calculateDirection(
+      startXPixel,
+      startYPixel,
+      endXPixel,
+      endYPixel
+    );
 
-          const yAtLeft = startYPixel + slope * (chartArea.left - startXPixel);
-          if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
-            intersections.push({
-              x: chartArea.left,
-              y: yAtLeft,
-              distance:
-                Math.pow(chartArea.left - startXPixel, 2) +
-                Math.pow(yAtLeft - startYPixel, 2),
-              direction: { x: -1, y: yAtLeft > startYPixel ? 1 : -1 },
-            });
-          }
+    let endPx;
 
-          const xAtTop = startXPixel + (chartArea.top - startYPixel) / slope;
-          if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
-            intersections.push({
-              x: xAtTop,
-              y: chartArea.top,
-              distance:
-                Math.pow(xAtTop - startXPixel, 2) +
-                Math.pow(chartArea.top - startYPixel, 2),
-              direction: { x: xAtTop > startXPixel ? 1 : -1, y: -1 },
-            });
-          }
+    if (slope === Infinity || slope === -Infinity) {
+      // 수직선인 경우 - 방향에 따라 위/아래로 확장
+      endPx = {
+        x: startXPixel,
+        y: direction.y > 0 ? chartArea.bottom : chartArea.top,
+      };
+    } else if (slope === 0) {
+      // 수평선인 경우 - 방향에 따라 좌/우로 확장
+      endPx = {
+        x: direction.x > 0 ? chartArea.right : chartArea.left,
+        y: startYPixel,
+      };
+    } else {
+      // 각 경계와의 교차점 계산
+      const intersections = [];
 
-          const xAtBottom =
-            startXPixel + (chartArea.bottom - startYPixel) / slope;
-          if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
-            intersections.push({
-              x: xAtBottom,
-              y: chartArea.bottom,
-              distance:
-                Math.pow(xAtBottom - startXPixel, 2) +
-                Math.pow(chartArea.bottom - startYPixel, 2),
-              direction: { x: xAtBottom > startXPixel ? 1 : -1, y: 1 },
-            });
-          }
+      // 오른쪽 경계와의 교차점
+      const yAtRight = startYPixel + slope * (chartArea.right - startXPixel);
+      if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
+        intersections.push({
+          x: chartArea.right,
+          y: yAtRight,
+          distance:
+            Math.pow(chartArea.right - startXPixel, 2) +
+            Math.pow(yAtRight - startYPixel, 2),
+          direction: { x: 1, y: yAtRight > startYPixel ? 1 : -1 },
+        });
+      }
 
-          const validIntersections = intersections.filter(
-            (intersection) =>
-              (intersection.direction.x === direction.x ||
-                intersection.direction.x === 0) &&
-              (intersection.direction.y === direction.y ||
-                intersection.direction.y === 0)
-          );
+      // 왼쪽 경계와의 교차점
+      const yAtLeft = startYPixel + slope * (chartArea.left - startXPixel);
+      if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
+        intersections.push({
+          x: chartArea.left,
+          y: yAtLeft,
+          distance:
+            Math.pow(chartArea.left - startXPixel, 2) +
+            Math.pow(yAtLeft - startYPixel, 2),
+          direction: { x: -1, y: yAtLeft > startYPixel ? 1 : -1 },
+        });
+      }
 
-          if (validIntersections.length > 0) {
-            endPx = validIntersections.reduce((closest, current) =>
-              current.distance < closest.distance ? current : closest
-            );
-          } else {
-            endPx = { x: endX, y: endY };
-          }
-        }
+      // 상단 경계와의 교차점
+      const xAtTop = startXPixel + (chartArea.top - startYPixel) / slope;
+      if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
+        intersections.push({
+          x: xAtTop,
+          y: chartArea.top,
+          distance:
+            Math.pow(xAtTop - startXPixel, 2) +
+            Math.pow(chartArea.top - startYPixel, 2),
+          direction: { x: xAtTop > startXPixel ? 1 : -1, y: -1 },
+        });
+      }
 
-        drawLine(
-          this.overlayCtx,
-          startXPixel,
-          startYPixel,
-          endPx.x,
-          endPx.y,
-          "red",
-          1,
-          chartArea
+      // 하단 경계와의 교차점
+      const xAtBottom = startXPixel + (chartArea.bottom - startYPixel) / slope;
+      if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
+        intersections.push({
+          x: xAtBottom,
+          y: chartArea.bottom,
+          distance:
+            Math.pow(xAtBottom - startXPixel, 2) +
+            Math.pow(chartArea.bottom - startYPixel, 2),
+          direction: { x: xAtBottom > startXPixel ? 1 : -1, y: 1 },
+        });
+      }
+
+      // 방향이 일치하는 교차점만 필터링
+      const validIntersections = intersections.filter(
+        (intersection) =>
+          (intersection.direction.x === direction.x ||
+            intersection.direction.x === 0) &&
+          (intersection.direction.y === direction.y ||
+            intersection.direction.y === 0)
+      );
+
+      if (validIntersections.length > 0) {
+        // 가장 가까운 교차점 선택 (여러개일 경우)
+        endPx = validIntersections.reduce((closest, current) =>
+          current.distance < closest.distance ? current : closest
         );
       } else {
-        const startXPixel = this.chart.scales.x.getPixelForValue(startX);
-        const endXPixel = this.chart.scales.x.getPixelForValue(endX);
-        const startYPixel = this.chart.scales.y.getPixelForValue(startY);
-        const endYPixel = this.chart.scales.y.getPixelForValue(endY);
-
-        drawLine(
-          this.overlayCtx,
-          startXPixel,
-          startYPixel,
-          endXPixel,
-          endYPixel,
-          "red",
-          1,
-          chartArea
-        );
+        // 유효한 교차점이 없으면 마우스 위치 사용
+        endPx = { x: endXPixel, y: endYPixel };
       }
-    });
+    }
+
+    drawLine(
+      this.overlayCtx,
+      startXPixel,
+      startYPixel,
+      endPx.x,
+      endPx.y,
+      "red",
+      1,
+      chartArea
+    );
+  }
+
+  // 일반 선 그리기
+  drawSimpleLine(startX, startY, endX, endY, chartArea) {
+    const startXPixel = this.chart.scales.x.getPixelForValue(startX);
+    const endXPixel = this.chart.scales.x.getPixelForValue(endX);
+    const startYPixel = this.chart.scales.y.getPixelForValue(startY);
+    const endYPixel = this.chart.scales.y.getPixelForValue(endY);
+
+    drawLine(
+      this.overlayCtx,
+      startXPixel,
+      startYPixel,
+      endXPixel,
+      endYPixel,
+      "red",
+      1,
+      chartArea
+    );
   }
 
   // 메서드 수정
