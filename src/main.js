@@ -32,6 +32,10 @@ class MainCanvas {
     this.chartCanvas = this.createCanvas("chartCanvas");
     this.chartCtx = this.chartCanvas.getContext("2d");
 
+    // 볼륨 차트 캔버스
+    this.volumeChartCanvas = this.createCanvas("volumeChartCanvas");
+    this.volumeChartCtx = this.volumeChartCanvas.getContext("2d");
+
     // 크로스헤어 캔버스
     this.crosshairCanvas = this.createCanvas("crosshairCanvas");
     this.crosshairCtx = this.crosshairCanvas.getContext("2d");
@@ -59,7 +63,8 @@ class MainCanvas {
     this.chartTestInstance = new ChartTest(
       this.chartCtx,
       this.crosshairCtx,
-      this.overlayCtx
+      this.overlayCtx,
+      this.volumeChartCtx
     );
 
     // 드로잉 인스턴스 생성
@@ -88,6 +93,7 @@ class MainCanvas {
       this.crosshairCanvas,
       this.overlayCanvas,
       this.drawingCanvas,
+      this.volumeChartCanvas,
     ].forEach((canvas) => {
       canvas.width = this.stageWidth * 2;
       canvas.height = this.stageHeight * 2;
@@ -99,6 +105,7 @@ class MainCanvas {
       this.crosshairCtx,
       this.overlayCtx,
       this.drawingCtx,
+      this.volumeChartCtx,
     ].forEach((ctx) => {
       ctx.scale(2, 2);
     });

@@ -1,9 +1,10 @@
 import { tickerInstance } from "./ticker.js";
 
 export class ChartCrosshair {
-  constructor(ctx, chart) {
+  constructor(ctx, chart, volumeChart) {
     this.ctx = ctx;
     this.chart = chart;
+    this.volumeChart = volumeChart;
     this.x = 0;
     this.y = 0;
     this.previousX = null;

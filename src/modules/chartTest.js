@@ -25,10 +25,11 @@ Chart.register(
 );
 
 export class ChartTest {
-  constructor(chartCtx, crosshairCtx, overlayCtx) {
+  constructor(chartCtx, crosshairCtx, overlayCtx, volumeChartCtx) {
     this.chartCtx = chartCtx;
     this.crosshairCtx = crosshairCtx;
     this.overlayCtx = overlayCtx;
+    this.volumeChartCtx = volumeChartCtx;
     this.isLoading = false;
     this.earliestX = null;
     this.debounceTimer = null;
@@ -36,7 +37,9 @@ export class ChartTest {
     this.labelsStack = [];
     this.dataStack = [];
     this.boundUpdateOverlayCanvas = this.updateOverlayCanvas.bind(this);
+    this.boundUpdateVolumeChart = this.updateVolumeChart.bind(this);
     this.isOverlaySubscribed = false;
+    this.isVolumeChartSubscribed = false;
 
     this.initialize();
   }
@@ -45,6 +48,7 @@ export class ChartTest {
     try {
       // 초기 데이터 가져오기
       const data = await this.handleFetchData();
+      const volumeData = this.formatVolumeData(data);
       if (!data || !data.labels || !data.labels.length) {
         console.error("차트 데이터가 유효하지 않습니다.");
         return;
@@ -56,6 +60,10 @@ export class ChartTest {
 
       // 차트 옵션 설정
       const chartOptions = this.createChartOptions(this.earliestX, latestX);
+      const volumeChartOptions = this.createVolumeChartOptions(
+        this.earliestX,
+        latestX
+      );
 
       // 차트 초기화
       this.chart = new Chart(this.chartCtx, {
@@ -64,12 +72,22 @@ export class ChartTest {
         options: chartOptions,
       });
 
+      // 볼륨 차트 초기화
+      this.volumeChart = new Chart(this.volumeChartCtx, {
+        type: "bar",
+        data: volumeData,
+        options: volumeChartOptions,
+      });
       // 일반 배열로 초기 데이터 설정
       this.labelsStack = [...this.chart.data.labels];
       this.dataStack = [...this.chart.data.datasets[0].data];
 
       // 크로스헤어 초기화
-      this.crosshair = new ChartCrosshair(this.crosshairCtx, this.chart);
+      this.crosshair = new ChartCrosshair(
+        this.crosshairCtx,
+        this.chart,
+        this.volumeChart
+      );
 
       // 차트 렌더링
       this.render();
@@ -116,6 +134,9 @@ export class ChartTest {
           },
           min: earliestX,
           max: latestX,
+          afterFit: function (scaleInstance) {
+            scaleInstance.height = 30;
+          },
         },
         y: {
           position: "right",
@@ -144,6 +165,73 @@ export class ChartTest {
     };
   }
 
+  createVolumeChartOptions(earliestX, latestX) {
+    return {
+      maintainAspectRatio: false,
+      animation: { duration: 0 },
+      responsive: false,
+      layout: {
+        padding: {
+          top: 10,
+        },
+      },
+      scales: {
+        x: {
+          type: "time",
+          time: {
+            displayFormats: {
+              millisecond: "HH:mm:ss.SSS",
+              second: "HH:mm:ss",
+              minute: "HH:mm",
+              hour: "MM/dd",
+              day: "MM/dd",
+              week: "MM/dd",
+              month: "MM/dd",
+              quarter: "MM/dd",
+              year: "MM/dd",
+            },
+          },
+          display: false,
+          min: earliestX,
+          max: latestX,
+          grid: {
+            display: false,
+          },
+          offset: true,
+          afterFit: function (scaleInstance) {
+            scaleInstance.height = 30;
+          },
+        },
+        y: {
+          position: "right",
+          display: false,
+          beginAtZero: true,
+          suggestedMax: function (context) {
+            const maxVolume = context.chart.data.datasets[0].data.reduce(
+              (max, current) => (current > max ? current : max),
+              0
+            );
+            return maxVolume * 5;
+          },
+          grid: {
+            display: false,
+          },
+          afterFit: function (scaleInstance) {
+            scaleInstance.width = 90;
+          },
+        },
+      },
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          enabled: false,
+        },
+      },
+    };
+  }
+
   // 플러그인 옵션 생성 메서드
   createPluginsOptions(earliestX, latestX) {
     return {
@@ -161,6 +249,9 @@ export class ChartTest {
         pan: {
           enabled: true,
           mode: "xy",
+          onPanStart: () => {
+            this.subscribeVolumeChartUpdate();
+          },
           onPan: ({ chart }) => {
             const xMin = chart.scales.x.min;
             if (xMin <= this.earliestX && !this.isLoading) {
@@ -169,6 +260,7 @@ export class ChartTest {
             this.subscribeOverlayUpdate();
           },
           onPanComplete: () => {
+            this.unsubscribeVolumeChartUpdate();
             this.unsubscribeOverlayUpdate();
           },
         },
@@ -180,7 +272,17 @@ export class ChartTest {
             const mode = event.ctrlKey || event.metaKey ? "y" : "x";
             chart.options.plugins.zoom.zoom.mode = mode;
           },
-          onZoom: () => {
+          onZoom: ({ chart }) => {
+            // 캔들 차트 줌 시 볼륨 차트도 함께 확대/축소
+            if (
+              this.volumeChart &&
+              chart.options.plugins.zoom.zoom.mode === "x"
+            ) {
+              this.volumeChart.options.scales.x.min = chart.scales.x.min;
+              this.volumeChart.options.scales.x.max = chart.scales.x.max;
+              this.volumeChart.update("none");
+            }
+
             this.subscribeOverlayUpdate();
           },
           onZoomComplete: () => {
@@ -208,6 +310,38 @@ export class ChartTest {
     if (this.isOverlaySubscribed) {
       tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
       this.isOverlaySubscribed = false;
+    }
+  }
+
+  // 볼륨 차트 업데이트 구독 메서드
+  subscribeVolumeChartUpdate() {
+    if (!this.isVolumeChartSubscribed) {
+      tickerInstance.subscribe(this.boundUpdateVolumeChart);
+      this.isVolumeChartSubscribed = true;
+    }
+  }
+
+  // 볼륨 차트 업데이트 구독 취소 메서드
+  unsubscribeVolumeChartUpdate() {
+    if (this.isVolumeChartSubscribed) {
+      tickerInstance.unsubscribe(this.boundUpdateVolumeChart);
+      this.isVolumeChartSubscribed = false;
+    }
+  }
+
+  // 볼륨 차트 업데이트 콜백 (티커에서 호출됨)
+  updateVolumeChart() {
+    if (this.chart && this.volumeChart) {
+      // 캔들 차트의 X축 범위를 가져옴
+      const xMin = this.chart.scales.x.min;
+      const xMax = this.chart.scales.x.max;
+
+      // 볼륨 차트의 X축 범위 업데이트
+      this.volumeChart.options.scales.x.min = xMin;
+      this.volumeChart.options.scales.x.max = xMax;
+
+      // 애니메이션 없이 즉시 업데이트
+      this.volumeChart.update("none");
     }
   }
 
@@ -304,9 +438,29 @@ export class ChartTest {
         this.chart.data.labels = this.labelsStack;
         this.chart.data.datasets[0].data = this.dataStack;
 
+        // 볼륨 차트 데이터도 업데이트
+        if (this.volumeChart) {
+          const volumeData = this.formatVolumeData({
+            labels: this.labelsStack,
+            datasets: [{ data: this.dataStack }],
+          });
+
+          this.volumeChart.data.labels = volumeData.labels;
+          this.volumeChart.data.datasets = volumeData.datasets;
+        }
+
         this.earliestX = this.labelsStack[0];
         this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
+
+        // 볼륨 차트의 스케일도 업데이트
+        if (this.volumeChart) {
+          this.volumeChart.options.scales.x.min = this.earliestX;
+        }
+
         this.chart.update("none");
+        if (this.volumeChart) {
+          this.volumeChart.update("none");
+        }
       }
     } catch (error) {
       console.error("추가 데이터 로딩 중 오류:", error);
@@ -640,6 +794,8 @@ export class ChartTest {
     if (this.chart) {
       this.chart.resize();
       this.chart.update("none");
+      this.volumeChart.resize();
+      this.volumeChart.update("none");
     }
 
     // 오버레이 다시 그리기
@@ -654,5 +810,110 @@ export class ChartTest {
     this.overlayCtx.lineWidth = width;
     this.overlayCtx.strokeStyle = color;
     this.overlayCtx.stroke();
+  }
+
+  formatVolumeData(data) {
+    // 데이터 구조가 초기화와 추가 로드 시 다를 수 있으므로 통일
+    const candleData = data.datasets[0].data;
+
+    // 특정 타임스탬프 검색 (1734566400000 - 밀리초 단위로 변환)
+    const targetTimestamp = 1734566400000;
+    const targetData = candleData.find(
+      (candle) => candle.x === targetTimestamp
+    );
+
+    if (targetData) {
+      console.log("===== 타임스탬프 1734566400 데이터 발견 =====");
+      console.log("날짜:", new Date(targetTimestamp).toLocaleString());
+      console.log("캔들 데이터:", targetData);
+      console.log("시가:", targetData.o);
+      console.log("고가:", targetData.h);
+      console.log("저가:", targetData.l);
+      console.log("종가:", targetData.c);
+      console.log("거래량:", targetData.v);
+      console.log("캔들 방향:", targetData.o < targetData.c ? "상승" : "하락");
+      console.log("=====================================");
+    }
+
+    // 각 바 색상 결정
+    const backgroundColor = candleData.map((candle) => {
+      // 캔들 데이터가 올바른 형식인지 확인
+      if (!candle || typeof candle !== "object") {
+        console.error("Invalid candle data:", candle);
+        return this.applyTransparency(chartColors.upBody, 0.4);
+      }
+
+      // 캔들스틱 차트와 동일한 방식으로 색상 결정
+      // chartjs-chart-financial 라이브러리의 내부 구현 방식과 일치
+      const openPrice = Number(candle.o);
+      const closePrice = Number(candle.c);
+      const isUp = openPrice <= closePrice;
+
+      // 특정 타임스탬프인 경우 추가 로깅
+      if (candle.x === targetTimestamp) {
+        // 시가와 종가의 타입 및 값 자세히 검사
+        console.log("===== 상세 데이터 검사 =====");
+        console.log("시가(o):", candle.o, "타입:", typeof candle.o);
+        console.log("종가(c):", candle.c, "타입:", typeof candle.c);
+        console.log("시가-종가 차이:", candle.o - candle.c);
+
+        // 명시적으로 숫자 변환 후 비교
+
+        console.log("숫자변환 후 - 시가:", openPrice, "종가:", closePrice);
+        console.log("숫자변환 후 - 시가<=종가:", openPrice <= closePrice);
+
+        // 부동소수점 고려한 비교 (소수점 6자리까지만 고려)
+        const roundedOpen = Math.round(openPrice * 1000000) / 1000000;
+        const roundedClose = Math.round(closePrice * 1000000) / 1000000;
+        console.log("반올림 후 - 시가:", roundedOpen, "종가:", roundedClose);
+        console.log("반올림 후 - 시가<=종가:", roundedOpen <= roundedClose);
+
+        // chartjs-chart-financial 라이브러리 내부 구현 방식 검사
+        console.log("isUp 값:", isUp);
+        console.log("===== 검사 완료 =====");
+      }
+
+      // chartColors와 정확히 동일한 색상 사용 (캔들차트와 일치)
+      return isUp
+        ? this.applyTransparency(chartColors.upBody, 0.4)
+        : this.applyTransparency(chartColors.downBody, 0.4);
+    });
+
+    return {
+      labels: data.labels,
+      datasets: [
+        {
+          data: candleData.map((item) => item.v / 10),
+          backgroundColor: backgroundColor,
+          borderColor: backgroundColor,
+          borderWidth: 0,
+          minBarLength: 10,
+        },
+      ],
+    };
+  }
+
+  // 색상에 투명도를 적용하는 헬퍼 메서드 추가
+  applyTransparency(color, alpha) {
+    // rgba 색상인 경우
+    if (color.startsWith("rgba")) {
+      // 마지막 닫는 괄호 직전의 알파 값을 대체
+      return color.replace(/,\s*[\d\.]+\)$/, `, ${alpha})`);
+    }
+    // rgb 색상인 경우
+    else if (color.startsWith("rgb")) {
+      // rgb를 rgba로 변환
+      return color.replace("rgb", "rgba").replace(")", `, ${alpha})`);
+    }
+    // 헥스 코드인 경우 (#ffffff 형식)
+    else if (color.startsWith("#")) {
+      // hex를 rgb 값으로 변환
+      const r = parseInt(color.substring(1, 3), 16);
+      const g = parseInt(color.substring(3, 5), 16);
+      const b = parseInt(color.substring(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    // 다른 형식이라면 기본값 반환
+    return color;
   }
 }

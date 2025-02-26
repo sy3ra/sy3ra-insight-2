@@ -58,17 +58,22 @@ canvas#chartCanvas {
 }
 
 canvas#overlayCanvas {
-  z-index: 20;
+  z-index: 10;
   pointer-events: none;
 }
 
 canvas#drawingCanvas {
+  z-index: 20;
+  pointer-events: none;
+}
+
+canvas#volumeChartCanvas {
   z-index: 30;
   pointer-events: none;
 }
 
 canvas#crosshairCanvas {
-  z-index: 50;
+  z-index: 40;
   pointer-events: none;
 }
 
