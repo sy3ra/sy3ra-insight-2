@@ -23,7 +23,7 @@ class Ticker {
 
   tick(timestamp) {
     if (!this.isRunning) return;
-    // console.log(this.subscribers.size);
+    console.log(this.subscribers.size);
     this.subscribers.forEach((fn) => fn(timestamp));
     requestAnimationFrame(this.tick);
   }

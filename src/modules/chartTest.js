@@ -38,10 +38,13 @@ export class ChartTest {
     this.dataStack = [];
     this.boundUpdateOverlayCanvas = this.updateOverlayCanvas.bind(this);
     this.boundUpdateVolumeChart = this.updateVolumeChart.bind(this);
+    this.boundUpdateCharts = this.updateCharts.bind(this);
     this.isOverlaySubscribed = false;
     this.isVolumeChartSubscribed = false;
-    this.isUpdating = false;
-    this.needsUpdate = false;
+    this.isChartUpdateSubscribed = false;
+    this.chartNeedsUpdate = false;
+    this.wheelDebounceTimer = null;
+    this.chartUpdateRefCount = 0;
 
     this.initialize();
   }
@@ -115,13 +118,17 @@ export class ChartTest {
 
     // 기존 코드를 대체하여 커스텀 컨트롤 핸들러 등록
     this.setupCustomControlsHandler();
+
+    // 차트 렌더링 성능 개선
+    this.chart.options.animation = false; // 애니메이션 완전히 비활성화
+    this.volumeChart.options.animation = false;
   }
 
   // afterFit 핸들러 설정 메서드 수정
   setupAfterFitHandlers() {
     // 메인 차트 X축 afterFit 핸들러
     this.chart.options.scales.x.afterFit = (scaleInstance) => {
-      if (this.needsUpdate && !this.isUpdating) {
+      if (this.chartNeedsUpdate && !this.isUpdating) {
         this.isUpdating = true;
 
         // 볼륨 차트 동기화 (철저하게)
@@ -146,7 +153,7 @@ export class ChartTest {
 
         // 상태 초기화
         this.isUpdating = false;
-        this.needsUpdate = false;
+        this.chartNeedsUpdate = false;
       }
     };
 
@@ -163,7 +170,7 @@ export class ChartTest {
     }
   }
 
-  // 커스텀 휠 이벤트 핸들러 메서드 추가
+  // 커스텀 휠 이벤트 핸들러 메서드 수정
   setupCustomControlsHandler() {
     // Chart.js의 기본 줌/패닝 플러그인 완전히 비활성화
     this.chart.options.plugins.zoom.zoom.wheel.enabled = false;
@@ -177,13 +184,10 @@ export class ChartTest {
     let isDragging = false;
     let lastX = 0;
     let lastY = 0;
-    let pinchDistance = 0;
+    let isWheelActive = false; // 휠 활성화 상태 추적 변수 추가
 
     // 이벤트 핸들러 함수들을 미리 정의
     const handleWheel = (e) => {
-      // 기본 동작 방지
-      // e.preventDefault();
-
       if (!this.chart) return;
 
       // 확대/축소 속도 및 방향 계산
@@ -204,9 +208,30 @@ export class ChartTest {
       // 줌 방향 결정: 수정자 키가 눌린 경우 Y축, 그렇지 않으면 X축
       const direction = isModifierPressed ? "y" : "x";
 
-      this.zoomChart(x, y, delta, direction);
+      // 차트 줌 실행 및 즉시 업데이트 적용
+      this.zoomChartImmediate(x, y, delta, direction);
+
+      // 첫 번째 휠 이벤트에서만 구독 추가
+      if (!isWheelActive) {
+        isWheelActive = true;
+        console.log("휠 이벤트 시작: 구독 시작");
+        this.subscribeChartUpdate("wheel");
+      }
+
+      // 휠 이벤트 디바운싱
+      if (this.wheelDebounceTimer) {
+        clearTimeout(this.wheelDebounceTimer);
+      }
+
+      this.wheelDebounceTimer = setTimeout(() => {
+        console.log("휠 타이머 종료: 구독 해제 시도");
+        isWheelActive = false;
+        this.unsubscribeChartUpdate("wheel-timer");
+        this.wheelDebounceTimer = null;
+      }, 150); // 300ms에서 150ms로 감소
     };
 
+    // 마우스 이벤트 핸들러
     const handleMouseDown = (e) => {
       // 오른쪽 마우스 클릭 무시
       if (e.button === 2) return;
@@ -219,8 +244,8 @@ export class ChartTest {
       if (!this.isPointInChartArea({ x: lastX, y: lastY })) return;
 
       isDragging = true;
-      // 패닝 시작 시 볼륨 차트 업데이트 구독
-      this.subscribeVolumeChartUpdate();
+      // 패닝 시작 시 구독 - 소스 식별자 추가
+      this.subscribeChartUpdate("mouse-down");
 
       // 기본 선택 동작 방지
       e.preventDefault();
@@ -233,13 +258,11 @@ export class ChartTest {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // 이동 거리 계산
       const dx = x - lastX;
       const dy = y - lastY;
 
       this.panChart(dx, dy);
 
-      // 업데이트된 위치 저장
       lastX = x;
       lastY = y;
     };
@@ -247,55 +270,41 @@ export class ChartTest {
     const handleMouseUp = () => {
       if (isDragging) {
         isDragging = false;
-        // 패닝 종료 시 볼륨 차트 업데이트 구독 해제
-        this.unsubscribeVolumeChartUpdate();
-        this.unsubscribeOverlayUpdate();
+        // 패닝 종료 시 구독 해제 - 소스 식별자 추가
+        this.unsubscribeChartUpdate("mouse-up");
       }
     };
 
-    const handleTouchStart = (e) => {
-      if (e.touches.length === 1) {
-        // 단일 터치 (패닝)
-        const touch = e.touches[0];
-        const rect = canvas.getBoundingClientRect();
-        lastX = touch.clientX - rect.left;
-        lastY = touch.clientY - rect.top;
-
-        isDragging = true;
-        this.subscribeVolumeChartUpdate();
-      } else if (e.touches.length === 2) {
-        // 두 손가락 터치 (핀치 줌)
-        const touch1 = e.touches[0];
-        const touch2 = e.touches[1];
-
-        pinchDistance = Math.hypot(
-          touch1.clientX - touch2.clientX,
-          touch1.clientY - touch2.clientY
-        );
-      }
-
-      e.preventDefault();
+    // mouseleave 이벤트 핸들러 수정
+    const handleMouseLeave = (e) => {
+      console.log("mouseleave 이벤트 발생");
+      // 기존 패닝 종료 처리 유지
+      this.unsubscribeChartUpdate("mouse-leave");
     };
 
-    // 이벤트 리스너 한 번만 등록
-    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    // 마우스 이벤트 리스너
+    canvas.addEventListener("wheel", handleWheel, { passive: true });
     canvas.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
-    canvas.addEventListener("mouseleave", handleMouseUp);
-    canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
+    canvas.addEventListener("mouseleave", handleMouseLeave);
 
-    // touchmove, touchend 등 다른 이벤트 핸들러도 유사하게 리팩토링...
+    // 터치 이벤트 리스너 주석 처리
+    /*
+    canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
+    canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+    canvas.addEventListener("touchend", handleTouchEnd);
+    canvas.addEventListener("touchcancel", handleTouchEnd);
+    */
   }
 
-  // 차트 줌 메서드
-  zoomChart(x, y, scale, direction = "x") {
+  // 새로운 즉시 업데이트 메서드 추가
+  zoomChartImmediate(x, y, scale, direction = "x") {
     const scales = this.chart.scales;
     const xScale = scales.x;
     const yScale = scales.y;
 
     if (direction === "x") {
-      // X축 줌 로직 (기존과 동일)
       const startX = xScale.min;
       const endX = xScale.max;
       const centerX = xScale.getValueForPixel(x);
@@ -308,10 +317,10 @@ export class ChartTest {
       xScale.options.min = newStartX;
       xScale.options.max = newEndX;
 
-      // 볼륨 차트 동기화 준비
+      // 볼륨 차트 동기화
       if (this.volumeChart) {
-        this.volumeChart.options.scales.x.min = newStartX;
-        this.volumeChart.options.scales.x.max = newEndX;
+        this.volumeChart.options.scales.x.min = xScale.options.min;
+        this.volumeChart.options.scales.x.max = xScale.options.max;
       }
     } else if (direction === "y") {
       // Y축 줌 로직
@@ -328,22 +337,24 @@ export class ChartTest {
       yScale.options.max = newEndY;
     }
 
-    // 볼륨 차트도 함께 업데이트할 때 정확한 동기화 보장
-    if (this.volumeChart && direction === "x") {
-      // 볼륨 차트와 캔들 차트의 X축 설정을 완전히 동일하게 유지
-      this.volumeChart.options.scales.x.min = xScale.options.min;
-      this.volumeChart.options.scales.x.max = xScale.options.max;
+    // 즉시 차트 업데이트 실행
+    this.chart.update("none");
 
-      // 내부 상태도 일치시키기 (중요)
-      this.volumeChart.scales.x.min = xScale.options.min;
-      this.volumeChart.scales.x.max = xScale.options.max;
+    // 볼륨 차트도 즉시 업데이트
+    if (this.volumeChart) {
+      this.volumeChart.update("none");
     }
 
-    // 안전한 업데이트 방식으로 되돌림
-    this.optimizedChartUpdate();
+    // 오버레이 즉시 업데이트
+    this.updateOverlayCanvas();
 
-    // 방향 파라미터를 전달하여 triggerUpdate 호출
-    this.triggerUpdate(direction);
+    // 업데이트 플래그도 설정 (다른 시스템과의 호환성 유지)
+    this.chartNeedsUpdate = false;
+
+    // 데이터 범위 확인 (과거 데이터 로딩 필요한지)
+    if (xScale.options.min <= this.earliestX && !this.isLoading) {
+      this.debouncedCheckLimitReached();
+    }
   }
 
   // 차트 패닝 메서드
@@ -352,34 +363,20 @@ export class ChartTest {
     const xScale = scales.x;
     const yScale = scales.y;
 
-    // X축 패닝 - 안정적인 방식으로 픽셀 위치를 값으로 변환
-    const startPixel = xScale.getPixelForValue(xScale.min);
-    const endPixel = xScale.getPixelForValue(xScale.max);
+    // X축 패닝
+    if (dx !== 0) {
+      // 현재 픽셀당 데이터 값
+      const pixelToDataRatio = (xScale.max - xScale.min) / xScale.width;
 
-    // 픽셀 이동 후 새 값으로 변환
-    const newStartX = xScale.getValueForPixel(startPixel - dx);
-    const newEndX = xScale.getValueForPixel(endPixel - dx);
+      // 이동할 데이터 양
+      const dataDx = dx * pixelToDataRatio;
 
-    // 차트 범위 제한 확인
-    const limits = this.chart.options.plugins.zoom.limits;
-    const xMin = limits?.x?.min ?? null;
-    const xMax = limits?.x?.max ?? null;
-
-    // 범위 제한 적용
-    if (xMin !== null && newStartX < xMin) {
-      const offset = xMin - newStartX;
-      xScale.options.min = xMin;
-      xScale.options.max = newEndX + offset;
-    } else if (xMax !== null && newEndX > xMax) {
-      const offset = newEndX - xMax;
-      xScale.options.min = newStartX - offset;
-      xScale.options.max = xMax;
-    } else {
-      xScale.options.min = newStartX;
-      xScale.options.max = newEndX;
+      // 새 범위 계산
+      xScale.options.min = xScale.min - dataDx;
+      xScale.options.max = xScale.max - dataDx;
     }
 
-    // Y축 패닝 (필요한 경우)
+    // Y축 패닝
     if (dy !== 0) {
       const yMin = yScale.min;
       const yMax = yScale.max;
@@ -393,27 +390,19 @@ export class ChartTest {
       yScale.options.max = newYMax;
     }
 
+    // 볼륨 차트도 함께 업데이트
+    if (this.volumeChart) {
+      this.volumeChart.options.scales.x.min = xScale.options.min;
+      this.volumeChart.options.scales.x.max = xScale.options.max;
+    }
+
     // 데이터 범위 확인 (과거 데이터 로딩 필요한지)
     if (xScale.options.min <= this.earliestX && !this.isLoading) {
       this.debouncedCheckLimitReached();
     }
 
-    // 볼륨 차트도 함께 업데이트할 때 정확한 동기화 보장
-    if (this.volumeChart) {
-      // 볼륨 차트와 캔들 차트의 X축 설정을 완전히 동일하게 유지
-      this.volumeChart.options.scales.x.min = xScale.options.min;
-      this.volumeChart.options.scales.x.max = xScale.options.max;
-
-      // 내부 상태도 일치시키기 (중요)
-      this.volumeChart.scales.x.min = xScale.options.min;
-      this.volumeChart.scales.x.max = xScale.options.max;
-    }
-
-    // 업데이트 필요 플래그 설정
-    this.needsUpdate = true;
-
-    // 수동 업데이트 트리거
-    this.triggerUpdate("x");
+    // 업데이트 필요 플래그만 설정
+    this.chartNeedsUpdate = true;
   }
 
   // 포인트가 차트 영역 내에 있는지 확인하는 헬퍼 메서드
@@ -608,14 +597,21 @@ export class ChartTest {
         },
         pan: {
           enabled: false,
+          /* 터치 관련 설정 주석 처리
+          mode: "x",
+          threshold: 10,
+          modifierKey: null,
+          */
         },
         zoom: {
           wheel: {
             enabled: false,
           },
+          /* 터치 관련 설정 주석 처리
           pinch: {
             enabled: false,
           },
+          */
           mode: "x",
         },
       },
@@ -635,22 +631,6 @@ export class ChartTest {
     if (this.isOverlaySubscribed) {
       tickerInstance.unsubscribe(this.boundUpdateOverlayCanvas);
       this.isOverlaySubscribed = false;
-    }
-  }
-
-  // 볼륨 차트 업데이트 구독 메서드
-  subscribeVolumeChartUpdate() {
-    if (!this.isVolumeChartSubscribed) {
-      tickerInstance.subscribe(this.boundUpdateVolumeChart);
-      this.isVolumeChartSubscribed = true;
-    }
-  }
-
-  // 볼륨 차트 업데이트 구독 취소 메서드
-  unsubscribeVolumeChartUpdate() {
-    if (this.isVolumeChartSubscribed) {
-      tickerInstance.unsubscribe(this.boundUpdateVolumeChart);
-      this.isVolumeChartSubscribed = false;
     }
   }
 
@@ -806,10 +786,30 @@ export class ChartTest {
 
   // 차트 업데이트
   updateCharts() {
+    if (!this.chart) return;
+
+    // 캔들 차트 업데이트
     this.chart.update("none");
+
+    // 볼륨 차트도 함께 업데이트
     if (this.volumeChart) {
+      // 볼륨 차트 동기화 (캔들 차트와 정확히 동일한 X축 범위)
+      this.volumeChart.options.scales.x.min = this.chart.scales.x.min;
+      this.volumeChart.options.scales.x.max = this.chart.scales.x.max;
+
       this.volumeChart.update("none");
     }
+
+    // 오버레이 업데이트
+    this.updateOverlayCanvas();
+
+    // 추가 데이터 로딩 필요 여부 확인 (모든 차트 업데이트에서 체크)
+    if (this.chart.scales.x.min <= this.earliestX && !this.isLoading) {
+      this.debouncedCheckLimitReached();
+    }
+
+    // 업데이트 완료 상태로 설정
+    this.chartNeedsUpdate = false;
   }
 
   // 로딩스피너를 생성 및 표시하는 메서드
@@ -1307,8 +1307,17 @@ export class ChartTest {
             this.volumeChart.options.scales.x.max = xScale.options.max;
           }
 
-          // 최적화된 차트 업데이트 호출
-          this.optimizedChartUpdate();
+          // 간소화된 업데이트 방식
+          if (this.chart) {
+            this.chart.update("none");
+          }
+
+          if (this.volumeChart) {
+            this.volumeChart.update("none");
+          }
+
+          // 오버레이 업데이트
+          this.updateOverlayCanvas();
         } else {
           // 현재 유효한 범위 저장
           this.lastValidMin = xScale.min;
@@ -1320,116 +1329,65 @@ export class ChartTest {
     }, 1000);
   }
 
-  // optimizedChartUpdate 메서드 수정
-  optimizedChartUpdate() {
-    // 안전한 방식으로 업데이트
-    if (!this._updatePending) {
-      this._updatePending = true;
+  // 새로운 차트 업데이트 구독 메서드
+  subscribeChartUpdate(source = "unknown") {
+    // 참조 카운트 증가
+    this.chartUpdateRefCount++;
+    console.log(
+      `차트 업데이트 구독 (소스: ${source}), 참조 수: ${this.chartUpdateRefCount}`
+    );
 
-      // 차트 동기화 호출
-      this.syncCharts();
-
-      requestAnimationFrame(() => {
-        if (this.chart) {
-          this.chart.update("none");
-        }
-
-        if (this.volumeChart) {
-          this.volumeChart.update("none");
-        }
-
-        // 오버레이 업데이트
-        this.updateOverlayCanvas();
-
-        this._updatePending = false;
-      });
+    // 아직 구독되지 않은 경우에만 구독
+    if (!this.isChartUpdateSubscribed) {
+      tickerInstance.subscribe(this.boundUpdateCharts);
+      this.isChartUpdateSubscribed = true;
     }
   }
 
-  // 수동 업데이트 트리거 메서드 수정
-  triggerUpdate(direction = "x") {
-    // needsUpdate 플래그 설정
-    this.needsUpdate = true;
+  // 구독 해제 메서드 개선
+  unsubscribeChartUpdate(source = "unknown") {
+    console.log(`차트 업데이트 구독 해제 시도 (소스: ${source})`);
 
-    // 직접 차트 업데이트 (안전한 방식으로)
-    if (this.chart) {
-      // 새로운 범위가 유효한지 확인
-      const xScale = this.chart.scales.x;
-      const yScale = this.chart.scales.y;
+    // mouseleave 이벤트가 발생한 경우 강제로 모든 구독 해제
+    if (source === "mouse-leave") {
+      console.log("마우스가 차트 영역을 벗어남: 모든 구독 강제 해제");
+      this.chartUpdateRefCount = 0;
 
-      // X축 유효성 검사
-      if (
-        !isFinite(xScale.options.min) ||
-        !isFinite(xScale.options.max) ||
-        xScale.options.min === xScale.options.max
-      ) {
-        console.warn(
-          "유효하지 않은 X축 범위:",
-          xScale.options.min,
-          xScale.options.max
-        );
-        return; // 유효하지 않은 범위면 업데이트 중단
+      if (this.isChartUpdateSubscribed) {
+        tickerInstance.unsubscribe(this.boundUpdateCharts);
+        this.isChartUpdateSubscribed = false;
+        console.log("구독 완전히 해제됨 (mouse-leave)");
       }
-
-      // Y축 유효성 검사 (Y축 작업인 경우만)
-      if (
-        direction === "y" &&
-        (!isFinite(yScale.options.min) ||
-          !isFinite(yScale.options.max) ||
-          yScale.options.min === yScale.options.max)
-      ) {
-        console.warn(
-          "유효하지 않은 Y축 범위:",
-          yScale.options.min,
-          yScale.options.max
-        );
-        return; // 유효하지 않은 범위면 업데이트 중단
-      }
-
-      // 간단한 업데이트로 변경 - optimizedChartUpdate 사용
-      this.optimizedChartUpdate();
-    }
-  }
-
-  // 차트 업데이트 시 두 차트를 정확히 동기화하는 함수
-  syncCharts() {
-    if (!this.chart || !this.volumeChart) return;
-
-    // 캔들 차트의 X축 범위 가져오기
-    const xMin = this.chart.scales.x.min;
-    const xMax = this.chart.scales.x.max;
-
-    // 볼륨 차트 범위 설정 (더 철저한 동기화)
-    this.volumeChart.options.scales.x.min = xMin;
-    this.volumeChart.options.scales.x.max = xMax;
-
-    // 내부 스케일 상태도 일치시키기
-    this.volumeChart.scales.x.min = xMin;
-    this.volumeChart.scales.x.max = xMax;
-
-    // 캔들 차트의 X축 설정을 볼륨 차트에 복사
-    const candleXScale = this.chart.options.scales.x;
-    const volumeXScale = this.volumeChart.options.scales.x;
-
-    // 동일한 오프셋 적용
-    volumeXScale.offset = candleXScale.offset;
-
-    // 캐터고리 퍼센티지와 바 퍼센티지 설정
-    if (this.chart.options.datasets && this.volumeChart.options.datasets) {
-      const candleOptions = this.chart.options.datasets.candlestick || {};
-      if (this.volumeChart.options.datasets.bar) {
-        this.volumeChart.options.datasets.bar.barPercentage =
-          candleOptions.barPercentage || 0.9;
-        this.volumeChart.options.datasets.bar.categoryPercentage =
-          candleOptions.categoryPercentage || 0.8;
-      }
+      return;
     }
 
-    // 두 차트의 내부 차트 영역을 일치시킴
-    if (this.chart.chartArea && this.volumeChart.chartArea) {
-      // X축 범위가 일치하도록 차트 영역 좌/우 경계 동기화
-      this.volumeChart.chartArea.left = this.chart.chartArea.left;
-      this.volumeChart.chartArea.right = this.chart.chartArea.right;
+    // wheel-timer 소스인 경우 참조 카운트 직접 관리
+    if (source === "wheel-timer") {
+      // wheel 이벤트에 대한 참조 카운트 명시적 감소
+      this.chartUpdateRefCount = Math.max(0, this.chartUpdateRefCount - 1);
+      console.log(`휠 타이머 종료 후 참조 수: ${this.chartUpdateRefCount}`);
+
+      // 참조 카운트가 0이면 구독 해제
+      if (this.chartUpdateRefCount === 0 && this.isChartUpdateSubscribed) {
+        tickerInstance.unsubscribe(this.boundUpdateCharts);
+        this.isChartUpdateSubscribed = false;
+        console.log("구독 완전히 해제됨 (wheel-timer)");
+      }
+      return;
+    }
+
+    // 일반적인 경우
+    if (this.chartUpdateRefCount > 0) {
+      this.chartUpdateRefCount--;
+    }
+
+    console.log(`구독 해제 후 참조 수: ${this.chartUpdateRefCount}`);
+
+    // 모든 참조가 해제된 경우에만 실제로 구독 해제
+    if (this.chartUpdateRefCount === 0 && this.isChartUpdateSubscribed) {
+      tickerInstance.unsubscribe(this.boundUpdateCharts);
+      this.isChartUpdateSubscribed = false;
+      console.log("구독 완전히 해제됨 (일반 케이스)");
     }
   }
 }
