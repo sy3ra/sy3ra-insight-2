@@ -1,12 +1,17 @@
 class Ticker {
   constructor() {
-    this.subscribers = new Set();
+    this.subscribers = new Map();
     this.isRunning = false;
     this.tick = this.tick.bind(this);
+    this.currentTick = 0;
   }
 
-  subscribe(fn) {
-    this.subscribers.add(fn);
+  subscribe(fn, eventType = "default") {
+    this.subscribers.set(fn, {
+      eventType,
+      lastExecutedTick: -1,
+    });
+
     if (!this.isRunning) {
       this.isRunning = true;
       requestAnimationFrame(this.tick);
@@ -14,7 +19,6 @@ class Ticker {
   }
 
   unsubscribe(fn) {
-    // console.log("구독취소dd");
     this.subscribers.delete(fn);
     if (this.subscribers.size === 0) {
       this.isRunning = false;
@@ -23,8 +27,28 @@ class Ticker {
 
   tick(timestamp) {
     if (!this.isRunning) return;
-    console.log(this.subscribers.size);
-    this.subscribers.forEach((fn) => fn(timestamp));
+    this.currentTick++;
+
+    const executedEventTypes = new Set();
+
+    this.subscribers.forEach((info, fn) => {
+      const { eventType, lastExecutedTick } = info;
+
+      if (eventType === "default" || !executedEventTypes.has(eventType)) {
+        fn(timestamp);
+
+        this.subscribers.set(fn, {
+          eventType,
+          lastExecutedTick: this.currentTick,
+        });
+
+        executedEventTypes.add(eventType);
+      }
+    });
+
+    // console.log(
+    //   `활성 구독자 수: ${this.subscribers.size}, 현재 틱: ${this.currentTick}`
+    // );
     requestAnimationFrame(this.tick);
   }
 }

@@ -4,7 +4,6 @@ import {
   CandlestickElement,
 } from "chartjs-chart-financial";
 import "chartjs-adapter-date-fns";
-import zoomPlugin from "chartjs-plugin-zoom";
 import { ChartCrosshair } from "./chartCrosshair";
 import { chartColors } from "./theme";
 import axios from "axios";
@@ -17,12 +16,7 @@ import {
 // Chart.js 유틸리티 함수 import 추가
 import { _isPointInArea } from "chart.js/helpers";
 // Chart.js에 필요한 요소 등록
-Chart.register(
-  ...registerables,
-  CandlestickController,
-  CandlestickElement,
-  zoomPlugin
-);
+Chart.register(...registerables, CandlestickController, CandlestickElement);
 
 export class ChartTest {
   constructor(chartCtx, crosshairCtx, overlayCtx, volumeChartCtx) {
@@ -101,17 +95,21 @@ export class ChartTest {
       latestX
     );
 
+    // 캔들 차트 인스턴스 생성
     this.chart = new Chart(this.chartCtx, {
       type: "candlestick",
       data: data,
       options: chartOptions,
     });
+    // console.log("캔들 차트 인스턴스가 생성되었습니다.");
 
+    // 볼륨 차트 인스턴스 생성
     this.volumeChart = new Chart(this.volumeChartCtx, {
       type: "bar",
       data: volumeData,
       options: volumeChartOptions,
     });
+    // console.log("볼륨 차트 인스턴스가 생성되었습니다.");
 
     // X축에 afterFit 이벤트 핸들러 등록
     this.setupAfterFitHandlers();
@@ -120,7 +118,11 @@ export class ChartTest {
     this.setupCustomControlsHandler();
 
     // 차트 렌더링 성능 개선
-    this.chart.options.animation = false; // 애니메이션 완전히 비활성화
+    this.chart.options.responsive = false; // 반응형 비활성화
+    this.chart.options.maintainAspectRatio = false; // 종횡비 유지 비활성화
+    this.chart.options.animation = false; // 애니메이션 비활성화
+    this.chart.options.elements.line.tension = 0; // 곡선 텐션 제거
+    this.chart.options.elements.point.radius = 0; // 점 제거
     this.volumeChart.options.animation = false;
   }
 
@@ -172,11 +174,6 @@ export class ChartTest {
 
   // 커스텀 휠 이벤트 핸들러 메서드 수정
   setupCustomControlsHandler() {
-    // Chart.js의 기본 줌/패닝 플러그인 완전히 비활성화
-    this.chart.options.plugins.zoom.zoom.wheel.enabled = false;
-    this.chart.options.plugins.zoom.zoom.pinch.enabled = false;
-    this.chart.options.plugins.zoom.pan.enabled = false;
-
     // 캔버스 요소 참조
     const canvas = this.chartCtx.canvas;
 
@@ -184,12 +181,51 @@ export class ChartTest {
     let isDragging = false;
     let lastX = 0;
     let lastY = 0;
-    let isWheelActive = false; // 휠 활성화 상태 추적 변수 추가
+    let isWheelActive = false;
+
+    // 이벤트 제한을 위한 변수 추가
+    let lastWheelFrameId = -1;
+    let lastMouseMoveFrameId = -1;
+    let lastMouseDownFrameId = -1;
+    let lastMouseLeaveFrameId = -1;
+    let currentFrameId = 0;
+
+    // 스로틀링을 위한 시간 변수 추가
+    let lastWheelTime = 0;
+    const WHEEL_THROTTLE_MS = 6; // 3ms 스로틀링
+
+    // 프레임 ID 업데이트 함수
+    const updateFrameId = () => {
+      currentFrameId++;
+      requestAnimationFrame(updateFrameId);
+    };
+    // 프레임 ID 업데이트 시작
+    requestAnimationFrame(updateFrameId);
 
     // 이벤트 핸들러 함수들을 미리 정의
     const handleWheel = (e) => {
       if (!this.chart) return;
 
+      // 현재 시간
+      const now = performance.now();
+
+      // 시간 기반 스로틀링 - 마지막 처리 시간으로부터 3ms가 지났는지 확인
+      if (now - lastWheelTime < WHEEL_THROTTLE_MS) {
+        e.preventDefault();
+        return;
+      }
+
+      // 같은 프레임에서 이미 휠 이벤트를 처리했다면 무시 (기존 프레임 제한 유지)
+      if (lastWheelFrameId === currentFrameId) {
+        e.preventDefault();
+        return;
+      }
+
+      // 시간 및 프레임 ID 업데이트
+      lastWheelTime = now;
+      lastWheelFrameId = currentFrameId;
+
+      // 나머지 휠 처리 로직은 그대로 유지
       // 확대/축소 속도 및 방향 계산
       const speed = 0.1;
       const delta = e.deltaY > 0 ? 1 - speed : 1 + speed;
@@ -228,13 +264,22 @@ export class ChartTest {
         isWheelActive = false;
         this.unsubscribeChartUpdate("wheel-timer");
         this.wheelDebounceTimer = null;
-      }, 150); // 300ms에서 150ms로 감소
+      }, 150);
     };
 
-    // 마우스 이벤트 핸들러
+    // 마우스 다운 이벤트 핸들러
     const handleMouseDown = (e) => {
       // 오른쪽 마우스 클릭 무시
       if (e.button === 2) return;
+
+      // 같은 프레임에서 이미 mousedown 이벤트를 처리했다면 무시
+      if (lastMouseDownFrameId === currentFrameId) {
+        e.preventDefault();
+        return;
+      }
+
+      // 현재 프레임 ID 기록
+      lastMouseDownFrameId = currentFrameId;
 
       const rect = canvas.getBoundingClientRect();
       lastX = e.clientX - rect.left;
@@ -244,15 +289,24 @@ export class ChartTest {
       if (!this.isPointInChartArea({ x: lastX, y: lastY })) return;
 
       isDragging = true;
-      // 패닝 시작 시 구독 - 소스 식별자 추가
+      // 패닝 시작 시 구독
       this.subscribeChartUpdate("mouse-down");
 
       // 기본 선택 동작 방지
       e.preventDefault();
     };
 
+    // 마우스 이동 이벤트 핸들러
     const handleMouseMove = (e) => {
       if (!isDragging || !this.chart) return;
+
+      // 같은 프레임에서 이미 mousemove 이벤트를 처리했다면 무시
+      if (lastMouseMoveFrameId === currentFrameId) {
+        return;
+      }
+
+      // 현재 프레임 ID 기록
+      lastMouseMoveFrameId = currentFrameId;
 
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -267,23 +321,32 @@ export class ChartTest {
       lastY = y;
     };
 
+    // 마우스 업 이벤트 핸들러 - 프레임 제한 필요 없음 (중요 이벤트)
     const handleMouseUp = () => {
       if (isDragging) {
         isDragging = false;
-        // 패닝 종료 시 구독 해제 - 소스 식별자 추가
+        // 패닝 종료 시 구독 해제
         this.unsubscribeChartUpdate("mouse-up");
       }
     };
 
-    // mouseleave 이벤트 핸들러 수정
+    // mouseleave 이벤트 핸들러
     const handleMouseLeave = (e) => {
+      // 같은 프레임에서 이미 mouseleave 이벤트를 처리했다면 무시
+      if (lastMouseLeaveFrameId === currentFrameId) {
+        return;
+      }
+
+      // 현재 프레임 ID 기록
+      lastMouseLeaveFrameId = currentFrameId;
+
       console.log("mouseleave 이벤트 발생");
       // 기존 패닝 종료 처리 유지
       this.unsubscribeChartUpdate("mouse-leave");
     };
 
-    // 마우스 이벤트 리스너
-    canvas.addEventListener("wheel", handleWheel, { passive: true });
+    // 이벤트 리스너 등록
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
     canvas.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
@@ -429,7 +492,7 @@ export class ChartTest {
   createChartOptions(earliestX, latestX) {
     return {
       maintainAspectRatio: false,
-      animation: { duration: 0 },
+      animation: false,
       responsive: false,
       layout: {
         padding: {
@@ -558,24 +621,6 @@ export class ChartTest {
         tooltip: {
           enabled: false,
         },
-        // 줌 플러그인을 캔들 차트와 동일하게 설정
-        zoom: {
-          limits: {
-            x: { min: earliestX, max: latestX },
-          },
-          pan: {
-            enabled: false,
-          },
-          zoom: {
-            wheel: {
-              enabled: false,
-            },
-            pinch: {
-              enabled: false,
-            },
-            mode: "x",
-          },
-        },
       },
     };
   }
@@ -589,31 +634,6 @@ export class ChartTest {
         enabled: false,
         intersect: true,
         mode: "point",
-      },
-      zoom: {
-        // 기본적으로 모든 줌/패닝 기능 비활성화
-        limits: {
-          x: { min: earliestX, max: latestX },
-        },
-        pan: {
-          enabled: false,
-          /* 터치 관련 설정 주석 처리
-          mode: "x",
-          threshold: 10,
-          modifierKey: null,
-          */
-        },
-        zoom: {
-          wheel: {
-            enabled: false,
-          },
-          /* 터치 관련 설정 주석 처리
-          pinch: {
-            enabled: false,
-          },
-          */
-          mode: "x",
-        },
       },
     };
   }
@@ -671,10 +691,9 @@ export class ChartTest {
             up: chartColors.upBody,
             down: chartColors.downBody,
           },
-          borderColors: {
-            up: chartColors.upBorder,
-            down: chartColors.downBorder,
-          },
+
+          radius: 0,
+          borderWidth: 0,
         },
       ],
     };
@@ -777,39 +796,69 @@ export class ChartTest {
   // 차트 범위 업데이트
   updateChartLimits() {
     this.earliestX = this.labelsStack[0];
-    this.chart.options.plugins.zoom.limits.x.min = this.earliestX;
-
     if (this.volumeChart) {
       this.volumeChart.options.scales.x.min = this.earliestX;
     }
   }
 
   // 차트 업데이트
-  updateCharts() {
+  updateCharts(timestamp) {
     if (!this.chart) return;
 
-    // 캔들 차트 업데이트
+    // 필요한 경우에만 업데이트 진행
+    if (this.chartNeedsUpdate) {
+      // 객체 생성 최소화 방식으로 차트 업데이트
+      this.updateChart();
+
+      // 볼륨 차트도 함께 업데이트
+      if (this.volumeChart) {
+        this.updateVolumeChart();
+      }
+
+      // 오버레이 업데이트
+      this.updateOverlayCanvas();
+
+      // 추가 데이터 로딩 필요 여부 확인
+      if (this.chart.scales.x.min <= this.earliestX && !this.isLoading) {
+        this.debouncedCheckLimitReached();
+      }
+
+      // 업데이트 완료 상태로 설정
+      this.chartNeedsUpdate = false;
+    }
+  }
+
+  // 메모리 효율적인 차트 업데이트 방법
+  updateChart() {
+    // 상태 변수로 캐시 사용
+    if (!this._chartScalesCache) {
+      this._chartScalesCache = {};
+    }
+
+    // 스케일 설정 재사용 (객체 생성 방지)
+    const xScale = this.chart.scales.x;
+    this._chartScalesCache.xMin = xScale.min;
+    this._chartScalesCache.xMax = xScale.max;
+
+    // 실제 데이터는 이미 this.chart.data.datasets[0].data에 있음
+    // 새로운 배열/객체를 만들지 않고 차트만 업데이트
+
+    // 애니메이션 없이 업데이트 (필수)
     this.chart.update("none");
+  }
 
-    // 볼륨 차트도 함께 업데이트
-    if (this.volumeChart) {
-      // 볼륨 차트 동기화 (캔들 차트와 정확히 동일한 X축 범위)
-      this.volumeChart.options.scales.x.min = this.chart.scales.x.min;
-      this.volumeChart.options.scales.x.max = this.chart.scales.x.max;
+  // 볼륨 차트도 객체 생성 최소화 방식으로 업데이트
+  updateVolumeChart() {
+    if (!this.volumeChart) return;
 
-      this.volumeChart.update("none");
+    // 캐시된 스케일 값 사용 (불필요한 객체 생성 방지)
+    if (this._chartScalesCache) {
+      this.volumeChart.options.scales.x.min = this._chartScalesCache.xMin;
+      this.volumeChart.options.scales.x.max = this._chartScalesCache.xMax;
     }
 
-    // 오버레이 업데이트
-    this.updateOverlayCanvas();
-
-    // 추가 데이터 로딩 필요 여부 확인 (모든 차트 업데이트에서 체크)
-    if (this.chart.scales.x.min <= this.earliestX && !this.isLoading) {
-      this.debouncedCheckLimitReached();
-    }
-
-    // 업데이트 완료 상태로 설정
-    this.chartNeedsUpdate = false;
+    // 애니메이션 없이 업데이트
+    this.volumeChart.update("none");
   }
 
   // 로딩스피너를 생성 및 표시하는 메서드
@@ -1240,6 +1289,7 @@ export class ChartTest {
           backgroundColor: backgroundColor,
           borderColor: backgroundColor,
           borderWidth: 0,
+          radius: 0,
           minBarLength: 10,
         },
       ],
@@ -1389,5 +1439,13 @@ export class ChartTest {
       this.isChartUpdateSubscribed = false;
       console.log("구독 완전히 해제됨 (일반 케이스)");
     }
+  }
+
+  // 데이터 서브샘플링
+  subsampleData(data, maxPoints) {
+    if (data.length <= maxPoints) return data;
+
+    const step = Math.ceil(data.length / maxPoints);
+    return data.filter((_, i) => i % step === 0);
   }
 }
