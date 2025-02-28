@@ -45,7 +45,7 @@ class Ticker {
         executedEventTypes.add(eventType);
       }
     });
-
+    // console.log(this.tick);
     // console.log(
     //   `활성 구독자 수: ${this.subscribers.size}, 현재 틱: ${this.currentTick}`
     // );
