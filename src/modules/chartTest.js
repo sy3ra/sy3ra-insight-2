@@ -50,6 +50,14 @@ export class ChartTest {
     this.crosshairCtx = crosshairCtx;
     this.overlayCtx = overlayCtx;
     this.volumeChartCtx = volumeChartCtx;
+
+    // 볼륨 차트 컨텍스트 유효성 검사
+    if (!this.volumeChartCtx) {
+      console.warn(
+        "volumeChartCtx가 제공되지 않았습니다. 볼륨 차트 기능이 비활성화됩니다."
+      );
+    }
+
     this.isLoading = false;
     this.earliestX = null;
     this.debounceTimer = null;
@@ -180,10 +188,6 @@ export class ChartTest {
   createCharts(data /*, volumeData*/) {
     const latestX = data.labels[data.labels.length - 1];
     const chartOptions = this.createChartOptions(this.earliestX, latestX);
-    // const volumeChartOptions = this.createVolumeChartOptions(
-    //   this.earliestX,
-    //   latestX
-    // );
 
     // 캔들 차트 인스턴스 생성
     this.chart = new Chart(this.chartCtx, {
@@ -191,15 +195,35 @@ export class ChartTest {
       data: data,
       options: chartOptions,
     });
-    console.log(this.chart.data);
 
-    // 볼륨 차트 인스턴스 생성
-    // this.volumeChart = new Chart(this.volumeChartCtx, {
-    //   type: "bar",
-    //   data: volumeData,
-    //   options: volumeChartOptions,
-    // });
-    // console.log("볼륨 차트 인스턴스가 생성되었습니다.");
+    console.log(this.chart.data);
+    console.log("asdf", this.chart.options);
+
+    // 볼륨 차트 생성 (volumeChartCtx가 존재할 경우에만)
+    if (this.volumeChartCtx) {
+      try {
+        const volumeData = this.formatVolumeData(data);
+        const volumeChartOptions = this.createVolumeChartOptions(
+          this.earliestX,
+          latestX
+        );
+
+        this.volumeChart = new Chart(this.volumeChartCtx, {
+          type: "bar",
+          data: volumeData,
+          options: volumeChartOptions,
+        });
+        console.log("볼륨 차트 인스턴스가 생성되었습니다.");
+      } catch (err) {
+        console.error("볼륨 차트 생성 중 오류 발생:", err);
+        this.volumeChart = null;
+      }
+    } else {
+      console.warn(
+        "볼륨 차트 컨텍스트가 없어 볼륨 차트가 생성되지 않았습니다."
+      );
+      this.volumeChart = null;
+    }
 
     // X축에 afterFit 이벤트 핸들러 등록
     this.setupAfterFitHandlers();
@@ -215,7 +239,10 @@ export class ChartTest {
     this.chart.options.animation = false; // 애니메이션 비활성화
     this.chart.options.elements.line.tension = 0; // 곡선 텐션 제거
     this.chart.options.elements.point.radius = 0; // 점 제거
-    // this.volumeChart.options.animation = false;
+
+    if (this.volumeChart) {
+      this.volumeChart.options.animation = false;
+    }
   }
 
   // afterFit 핸들러 설정 메서드 수정
@@ -235,16 +262,16 @@ export class ChartTest {
     };
 
     // 볼륨 차트 X축 afterFit 핸들러 - 캔들차트와 동기화하는 역할
-    // if (this.volumeChart) {
-    //   this.volumeChart.options.scales.x.afterFit = (scaleInstance) => {
-    //     // 캔들차트의 X축 레이아웃과 정확히 일치시킴
-    //     if (this.chart && this.chart.scales && this.chart.scales.x) {
-    //       scaleInstance.left = this.chart.scales.x.left;
-    //       scaleInstance.right = this.chart.scales.x.right;
-    //       scaleInstance.width = this.chart.scales.x.width;
-    //     }
-    //   };
-    // }
+    if (this.volumeChart) {
+      this.volumeChart.options.scales.x.afterFit = (scaleInstance) => {
+        // 캔들차트의 X축 레이아웃과 정확히 일치시킴
+        if (this.chart && this.chart.scales && this.chart.scales.x) {
+          scaleInstance.left = this.chart.scales.x.left;
+          scaleInstance.right = this.chart.scales.x.right;
+          scaleInstance.width = this.chart.scales.x.width;
+        }
+      };
+    }
   }
 
   // 커스텀 휠 및 마우스 이벤트 핸들러 설정 - 객체 풀링 적용
@@ -317,8 +344,8 @@ export class ChartTest {
         return;
       }
 
-      // 수정자 키 확인 (Shift 키)
-      const isModifierPressed = e.shiftKey;
+      // 수정자 키 확인 (Shift 키, Command 키(Mac), Control 키(Windows))
+      const isModifierPressed = e.shiftKey || e.metaKey || e.ctrlKey;
 
       // 휠 처리 로직
       const speed = 0.1;
@@ -450,7 +477,13 @@ export class ChartTest {
 
   // 객체 풀링을 적용한 줌 메서드
   zoomChartImmediate(x, y, scale, direction = "x") {
-    if (!this.chart) return;
+    if (
+      !this.chart ||
+      !this.chart.scales ||
+      !this.chart.scales.x ||
+      !this.chart.scales.y
+    )
+      return;
 
     try {
       const xScale = this.chart.scales.x;
@@ -488,7 +521,22 @@ export class ChartTest {
       }
 
       // 즉시 차트 업데이트 실행
+      if (!this.chart.options.scales.x.ticks) {
+        this.chart.options.scales.x.ticks = {};
+      }
+      if (!this.chart.options.scales.x.ticks.font) {
+        this.chart.options.scales.x.ticks.font = {
+          family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
+          size: 12,
+        };
+      }
+
       this.chart.update("none");
+
+      // 볼륨 차트 업데이트 추가
+      if (this.volumeChart) {
+        this.updateVolumeChart();
+      }
 
       // 오버레이 즉시 업데이트
       this.updateOverlayCanvas();
@@ -551,8 +599,8 @@ export class ChartTest {
   initializeCrosshair() {
     this.crosshair = new ChartCrosshair(
       this.crosshairCtx,
-      this.chart
-      // this.volumeChart
+      this.chart,
+      this.volumeChart
     );
   }
 
@@ -565,6 +613,27 @@ export class ChartTest {
       layout: {
         padding: {
           right: 8,
+        },
+      },
+      elements: {
+        candlestick: {
+          colors: {
+            up: chartColors.upBorder,
+            down: chartColors.downBorder,
+            unchanged: chartColors.upBorder,
+          },
+          borderColors: {
+            up: chartColors.upBorder,
+            down: chartColors.downBorder,
+            unchanged: chartColors.upBorder,
+          },
+          backgroundColors: {
+            up: chartColors.upBody,
+            down: chartColors.downBody,
+            unchanged: chartColors.upBody,
+          },
+          borderWidth: 0,
+          barPercentage: 0.9,
         },
       },
       scales: {
@@ -590,6 +659,10 @@ export class ChartTest {
             // autoSkipPadding: 100,
             source: "auto",
             // display: true,
+            font: {
+              family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
+              size: 12,
+            },
           },
           grid: {
             color: "rgba(255, 255, 255, 0.1)",
@@ -615,6 +688,10 @@ export class ChartTest {
             },
             padding: 8,
             maxTicksLimit: 8,
+            font: {
+              family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
+              size: 12,
+            },
           },
           grid: {
             color: "rgba(255, 255, 255, 0.1)",
@@ -626,52 +703,64 @@ export class ChartTest {
           },
         },
       },
-      // plugins: this.createPluginsOptions(earliestX, latestX),
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          enabled: false,
+        },
+        title: {
+          display: false,
+        },
+      },
     };
   }
 
   createVolumeChartOptions(earliestX, latestX) {
     return {
-      responsive: true,
       maintainAspectRatio: false,
-      animation: false,
+      animation: { duration: 0 },
+      responsive: false,
       layout: {
         padding: {
-          right: 8,
+          top: 10,
         },
       },
       scales: {
         x: {
           type: "time",
           time: {
-            unit: "day",
+            displayFormats: {
+              millisecond: "HH:mm:ss.SSS",
+              second: "HH:mm:ss",
+              minute: "HH:mm",
+              hour: "MM/dd",
+              day: "MM/dd",
+              week: "MM/dd",
+              month: "MM/dd",
+              quarter: "MM/dd",
+              year: "MM/dd",
+            },
           },
+          display: false,
           min: earliestX,
           max: latestX,
-          offset: true,
-          ticks: {
-            source: "auto",
-            autoSkip: true,
-            maxRotation: 0,
-            display: false,
-          },
           grid: {
             display: false,
           },
-          bounds: "data",
-          alignToPixels: true,
+          offset: true,
+          afterFit: function (scaleInstance) {
+            scaleInstance.height = 30;
+          },
         },
         y: {
           position: "right",
           display: false,
           beginAtZero: true,
-          suggestedMax: function (context) {
-            const maxVolume = context.chart.data.datasets[0].data.reduce(
-              (max, current) => (current > max ? current : max),
-              0
-            );
-            return maxVolume * 5;
-          },
+          min: 0, // 볼륨 차트는 항상 0에서 시작
+          suggestedMax: 5, // 초기 기본값
+          // suggestedMax 대신 동적으로 최대값 계산을 위해 adjustVolumeChartYScale 메서드 사용
           grid: {
             display: false,
           },
@@ -681,16 +770,14 @@ export class ChartTest {
         },
       },
       plugins: {
-        decimation: {
-          enabled: true,
-          algorithm: "lttb", // 'lttb' (Largest Triangle Three Buckets) 또는 'min-max' 선택 가능
-          samples: 100, // 최종적으로 렌더링할 데이터 포인트 수
-        },
         legend: {
           display: false,
         },
         tooltip: {
           enabled: false,
+        },
+        title: {
+          display: false,
         },
       },
     };
@@ -731,17 +818,23 @@ export class ChartTest {
   }
 
   // 볼륨 차트 업데이트 콜백
-  // updateVolumeChart() {
-  //   if (this.chart && this.volumeChart) {
-  //     const xMin = this.chart.scales.x.min;
-  //     const xMax = this.chart.scales.x.max;
+  updateVolumeChart() {
+    if (this.chart && this.volumeChart) {
+      // 캔들 차트의 X축 범위를 가져옴
+      const xMin = this.chart.scales.x.min;
+      const xMax = this.chart.scales.x.max;
 
-  //     this.volumeChart.options.scales.x.min = xMin;
-  //     this.volumeChart.options.scales.x.max = xMax;
+      // 볼륨 차트의 X축 범위 업데이트
+      this.volumeChart.options.scales.x.min = xMin;
+      this.volumeChart.options.scales.x.max = xMax;
 
-  //     this.volumeChart.update("none");
-  //   }
-  // }
+      // 볼륨 차트의 Y축 범위 업데이트
+      this.adjustVolumeChartYScale(xMin, xMax);
+
+      // 애니메이션 없이 즉시 업데이트
+      this.volumeChart.update("none");
+    }
+  }
 
   // 데이터 포맷팅 함수
   xohlcvFormatData(data) {
@@ -763,21 +856,12 @@ export class ChartTest {
       };
     }
 
-    // 불변 색상 객체를 한 번만 생성
-    const bgColors = {
-      up: chartColors.upBody,
-      down: chartColors.downBody,
-    };
-
     return {
       labels,
       datasets: [
         {
           label: "BTC/USDT Chart",
           data: formattedData,
-          backgroundColors: bgColors,
-          radius: 0,
-          borderWidth: 0,
         },
       ],
     };
@@ -817,16 +901,62 @@ export class ChartTest {
   }
 
   async debouncedCheckLimitReached() {
+    // 이전 타이머가 존재하면 취소
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
-    if (this.isLoading) return;
+
+    // 이미 로딩 중이라면 함수 종료
+    if (this.isLoading) {
+      return;
+    }
 
     this.isLoading = true;
     this.showLoadingSpinner();
 
     try {
-      await this.loadMoreData();
+      // 추가 데이터 가져오기
+      const formattedData = await this.handleFetchMoreData();
+
+      // 새 데이터가 있을 경우만 처리
+      if (formattedData.labels.length > 0) {
+        // 캔들 차트 데이터 추가
+        this.labelsStack = [...formattedData.labels, ...this.labelsStack];
+        this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
+
+        // 차트 데이터 업데이트
+        this.chart.data.labels = this.labelsStack;
+        this.chart.data.datasets[0].data = this.dataStack;
+
+        // 데이터 경계값 업데이트
+        this.earliestX = this.labelsStack[0];
+        this.chart.options.scales.x.min = this.earliestX;
+
+        // 볼륨 차트 데이터도 업데이트
+        if (this.volumeChart) {
+          // 전체 데이터를 기반으로 볼륨 차트 데이터 재생성
+          const volumeData = this.formatVolumeData({
+            labels: this.labelsStack,
+            datasets: [{ data: this.dataStack }],
+          });
+
+          // 볼륨 차트 데이터 설정
+          this.volumeChart.data.labels = volumeData.labels;
+          this.volumeChart.data.datasets = volumeData.datasets;
+
+          // 볼륨 차트 X축 범위도 업데이트
+          this.volumeChart.options.scales.x.min = this.earliestX;
+        }
+
+        // 차트 업데이트
+        this.chart.update("none");
+        if (this.volumeChart) {
+          this.volumeChart.update("none");
+        }
+
+        // 오버레이 업데이트
+        this.updateOverlayCanvas();
+      }
     } catch (error) {
       console.error("추가 데이터 로딩 중 오류:", error);
     } finally {
@@ -834,15 +964,6 @@ export class ChartTest {
         this.hideLoadingSpinner();
         this.isLoading = false;
       }, 500);
-    }
-  }
-
-  async loadMoreData() {
-    const formattedData = await this.handleFetchMoreData();
-    if (formattedData.labels.length > 0) {
-      this.appendNewData(formattedData);
-      this.updateChartLimits();
-      this.updateCharts();
     }
   }
 
@@ -866,43 +987,75 @@ export class ChartTest {
 
   updateChartLimits() {
     this.earliestX = this.labelsStack[0];
-    // if (this.volumeChart) {
-    //   this.volumeChart.options.scales.x.min = this.earliestX;
-    // }
+    if (this.volumeChart) {
+      this.volumeChart.options.scales.x.min = this.earliestX;
+    }
   }
 
   updateCharts(timestamp) {
     if (!this.chart) return;
 
-    if (this.chartNeedsUpdate) {
-      this.updateChart();
-      this.updateOverlayCanvas();
+    try {
+      if (this.chartNeedsUpdate) {
+        this.updateChart();
+        this.updateOverlayCanvas();
 
-      if (this.chart.scales.x.min <= this.earliestX && !this.isLoading) {
-        this.debouncedCheckLimitReached();
+        // 볼륨 차트 업데이트 안전 로직 추가
+        if (
+          this.volumeChart &&
+          this.volumeChart.ctx &&
+          this.volumeChart.ctx.canvas &&
+          this.volumeChart.ctx.canvas.parentNode
+        ) {
+          this.updateVolumeChart();
+        }
+
+        if (this.chart.scales.x.min <= this.earliestX && !this.isLoading) {
+          this.debouncedCheckLimitReached();
+        }
+        this.chartNeedsUpdate = false;
       }
-      this.chartNeedsUpdate = false;
+    } catch (err) {
+      console.error("차트 업데이트 중 오류 처리됨:", err);
     }
   }
 
   updateChart() {
-    if (!this._chartScalesCache) {
-      this._chartScalesCache = {};
-    }
-    const xScale = this.chart.scales.x;
-    this._chartScalesCache.xMin = xScale.min;
-    this._chartScalesCache.xMax = xScale.max;
-    this.chart.update("none");
-  }
+    if (!this.chart || !this.chart.scales || !this.chart.scales.x) return;
 
-  // updateVolumeChart() {
-  //   if (!this.volumeChart) return;
-  //   if (this._chartScalesCache) {
-  //     this.volumeChart.options.scales.x.min = this._chartScalesCache.xMin;
-  //     this.volumeChart.options.scales.x.max = this._chartScalesCache.xMax;
-  //   }
-  //   this.volumeChart.update("none");
-  // }
+    try {
+      if (!this._chartScalesCache) {
+        this._chartScalesCache = {};
+      }
+      const xScale = this.chart.scales.x;
+      this._chartScalesCache.xMin = xScale.min;
+      this._chartScalesCache.xMax = xScale.max;
+
+      // 메인 차트의 폰트 설정 확인
+      if (!this.chart.options.scales.x.ticks) {
+        this.chart.options.scales.x.ticks = {};
+      }
+      if (!this.chart.options.scales.x.ticks.font) {
+        this.chart.options.scales.x.ticks.font = {
+          family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
+          size: 12,
+        };
+      }
+      if (!this.chart.options.scales.y.ticks) {
+        this.chart.options.scales.y.ticks = {};
+      }
+      if (!this.chart.options.scales.y.ticks.font) {
+        this.chart.options.scales.y.ticks.font = {
+          family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
+          size: 12,
+        };
+      }
+
+      this.chart.update("none");
+    } catch (err) {
+      console.error("차트 업데이트 실패:", err);
+    }
+  }
 
   showLoadingSpinner() {
     if (!this.spinner) {
@@ -1368,8 +1521,10 @@ export class ChartTest {
     if (this.chart) {
       this.chart.resize();
       this.chart.update("none");
-      // this.volumeChart.resize();
-      // this.volumeChart.update("none");
+      if (this.volumeChart) {
+        this.volumeChart.resize();
+        this.volumeChart.update("none");
+      }
     }
     this.renderOverlays();
   }
@@ -1384,59 +1539,92 @@ export class ChartTest {
   }
 
   formatVolumeData(data) {
+    // 데이터 구조가 초기화와 추가 로드 시 다를 수 있으므로 통일
     const candleData = data.datasets[0].data;
-    const labels = data.labels;
-    const dataLength = candleData.length;
 
-    // 객체 풀에서 배열 객체 가져오기
-    const dataArr = this.arrayPool.get();
-    const bgColorArr = this.arrayPool.get();
-    const borderColorArr = this.arrayPool.get();
+    // 특정 타임스탬프 검색 (로깅 코드 유지)
+    const targetTimestamp = 1734566400000;
+    const targetData = candleData.find(
+      (candle) => candle.x === targetTimestamp
+    );
 
-    // 배열 크기 설정
-    dataArr.length = dataLength;
-    bgColorArr.length = dataLength;
-    borderColorArr.length = dataLength;
+    if (targetData) {
+      // 기존 로깅 코드 유지
+      console.log("===== 타임스탬프 1734566400 데이터 발견 =====");
+      console.log("날짜:", new Date(targetTimestamp).toLocaleString());
+      console.log("캔들 데이터:", targetData);
+      console.log("시가:", targetData.o);
+      console.log("고가:", targetData.h);
+      console.log("저가:", targetData.l);
+      console.log("종가:", targetData.c);
+      console.log("거래량:", targetData.v);
+      console.log("캔들 방향:", targetData.o < targetData.c ? "상승" : "하락");
+      console.log("=====================================");
+    }
 
-    // 단일 루프로 처리하여 불필요한 배열 생성 방지
-    for (let i = 0; i < dataLength; i++) {
-      const candle = candleData[i];
+    // 볼륨 데이터 전처리
+    // 1. 볼륨 값 추출
+    const rawVolumeValues = candleData.map((item) =>
+      item && item.v ? item.v : 0
+    );
 
+    // 2. 전체 데이터에서 볼륨 최대값 찾기
+    const maxVolumeInData = Math.max(
+      ...rawVolumeValues.filter((v) => isFinite(v) && v > 0)
+    );
+
+    // 3. 최대 바 높이 설정 (조정 가능한 파라미터)
+    const maxBarHeight = 100; // 바의 최대 높이 (픽셀 단위로 생각할 수 있음)
+
+    // 4. 스케일링 계수 계산 (모든 데이터가 maxBarHeight 이하로 스케일링되도록)
+    const scalingFactor =
+      maxVolumeInData > 0 ? maxBarHeight / maxVolumeInData : 1;
+
+    // 각 바 색상 결정 (기존 코드 유지)
+    const backgroundColor = candleData.map((candle) => {
+      // 캔들 데이터가 올바른 형식인지 확인
       if (!candle || typeof candle !== "object") {
-        dataArr[i] = 0;
-        bgColorArr[i] = this.applyTransparency(chartColors.upBody, 0.4);
-        borderColorArr[i] = bgColorArr[i];
-        continue;
+        console.error("Invalid candle data:", candle);
+        return this.applyTransparency(chartColors.upBody, 0.4);
       }
 
+      // 캔들스틱 차트와 동일한 방식으로 색상 결정
       const openPrice = Number(candle.o);
       const closePrice = Number(candle.c);
       const isUp = openPrice <= closePrice;
-      const color = isUp
+
+      // 특정 타임스탬프인 경우 추가 로깅 (기존 코드 유지)
+      if (candle.x === targetTimestamp) {
+        // ... existing logging code ...
+      }
+
+      // chartColors와 정확히 동일한 색상 사용 (캔들차트와 일치)
+      return isUp
         ? this.applyTransparency(chartColors.upBody, 0.4)
         : this.applyTransparency(chartColors.downBody, 0.4);
+    });
 
-      dataArr[i] = candle.v / 10;
-      bgColorArr[i] = color;
-      borderColorArr[i] = color;
-    }
+    // 볼륨 데이터 생성 (각 바의 최대 높이 제한 적용)
+    const scaledVolumeData = rawVolumeValues.map((volume) => {
+      // 볼륨 값에 스케일링 적용 (최대값 제한)
+      const scaledVolume = volume * scalingFactor;
 
-    // 결과 객체 생성
-    const result = {
-      labels: labels,
+      // 최소 바 길이 적용 (매우 작은 볼륨도 시각적으로 표시)
+      return Math.max(scaledVolume, volume > 0 ? 3 : 0);
+    });
+
+    return {
+      labels: data.labels,
       datasets: [
         {
-          data: dataArr,
-          backgroundColor: bgColorArr,
-          borderColor: borderColorArr,
+          data: scaledVolumeData,
+          backgroundColor: backgroundColor,
+          borderColor: backgroundColor,
           borderWidth: 0,
-          radius: 0,
-          minBarLength: 10,
+          minBarLength: 3, // 최소 바 길이 설정 (작은 값도 시각적으로 보이도록)
         },
       ],
     };
-
-    return result;
   }
 
   applyTransparency(color, alpha) {
@@ -1491,16 +1679,16 @@ export class ChartTest {
             xScale.options.min = this.earliestX;
             xScale.options.max = latestX;
           }
-          // if (this.volumeChart) {
-          //   this.volumeChart.options.scales.x.min = xScale.options.min;
-          //   this.volumeChart.options.scales.x.max = xScale.options.max;
-          // }
+          if (this.volumeChart) {
+            this.volumeChart.options.scales.x.min = xScale.options.min;
+            this.volumeChart.options.scales.x.max = xScale.options.max;
+          }
           if (this.chart) {
             this.chart.update("none");
           }
-          // if (this.volumeChart) {
-          //   this.volumeChart.update("none");
-          // }
+          if (this.volumeChart) {
+            this.volumeChart.update("none");
+          }
           this.updateOverlayCanvas();
         } else {
           this.lastValidMin = xScale.min;
@@ -1560,5 +1748,28 @@ export class ChartTest {
     if (data.length <= maxPoints) return data;
     const step = Math.ceil(data.length / maxPoints);
     return data.filter((_, i) => i % step === 0);
+  }
+
+  // 볼륨 차트의 Y축 범위를 고정하여 모든 바가 표시되도록 조정
+  adjustVolumeChartYScale(xMin, xMax) {
+    if (!this.volumeChart) return;
+
+    try {
+      // 볼륨 바 최대 높이에 맞춰 Y축 범위 설정
+      // formatVolumeData에서 설정한 maxBarHeight와 일치시킴
+      const maxBarHeight = 100;
+
+      // 여유 공간 추가 (10% 정도)
+      const padding = maxBarHeight * 0.1;
+      const suggestedMax = maxBarHeight + padding;
+
+      // Y축 설정
+      this.volumeChart.options.scales.y.suggestedMax = suggestedMax;
+      this.volumeChart.options.scales.y.min = 0;
+    } catch (error) {
+      console.warn("볼륨 차트 Y축 범위 조정 중 오류:", error);
+      // 오류 발생 시 기본값 설정
+      this.volumeChart.options.scales.y.suggestedMax = 110;
+    }
   }
 }

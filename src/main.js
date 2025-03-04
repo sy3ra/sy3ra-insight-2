@@ -74,8 +74,8 @@ class MainCanvas {
     this.chartTestInstance = new ChartTest(
       this.chartCtx,
       this.contexts.crosshair,
-      this.contexts.overlay
-      // this.contexts.volumeChart
+      this.contexts.overlay,
+      this.contexts.volumeChart
     );
 
     // 드로잉 인스턴스 생성
