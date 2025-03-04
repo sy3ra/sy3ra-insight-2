@@ -1539,17 +1539,43 @@ export class ChartTest {
   }
 
   formatVolumeData(data) {
+    // 기존 배열을 재사용하기 위해 객체 풀에서 배열 가져오기
+    const rawVolumeValues = this.arrayPool.get();
+    const backgroundColor = this.arrayPool.get();
+    const scaledVolumeData = this.arrayPool.get();
+
     // 데이터 구조가 초기화와 추가 로드 시 다를 수 있으므로 통일
     const candleData = data.datasets[0].data;
+    const candleLength = candleData.length;
 
     // 특정 타임스탬프 검색 (로깅 코드 유지)
     const targetTimestamp = 1734566400000;
-    const targetData = candleData.find(
-      (candle) => candle.x === targetTimestamp
-    );
+    let targetData;
 
+    // 루프를 한 번만 돌면서 모든 배열을 동시에 처리
+    let maxVolumeInData = 0;
+
+    // 볼륨 값 추출 및 최대값 찾기를 단일 루프로 처리
+    for (let i = 0; i < candleLength; i++) {
+      const candle = candleData[i];
+
+      // 타겟 타임스탬프 검사
+      if (candle && candle.x === targetTimestamp) {
+        targetData = candle;
+      }
+
+      // 볼륨 값 추출
+      const volume = candle && candle.v ? candle.v : 0;
+      rawVolumeValues[i] = volume;
+
+      // 최대값 찾기 (한 번의 루프에서 처리)
+      if (isFinite(volume) && volume > 0 && volume > maxVolumeInData) {
+        maxVolumeInData = volume;
+      }
+    }
+
+    // 로깅 코드 유지
     if (targetData) {
-      // 기존 로깅 코드 유지
       console.log("===== 타임스탬프 1734566400 데이터 발견 =====");
       console.log("날짜:", new Date(targetTimestamp).toLocaleString());
       console.log("캔들 데이터:", targetData);
@@ -1562,58 +1588,38 @@ export class ChartTest {
       console.log("=====================================");
     }
 
-    // 볼륨 데이터 전처리
-    // 1. 볼륨 값 추출
-    const rawVolumeValues = candleData.map((item) =>
-      item && item.v ? item.v : 0
-    );
-
-    // 2. 전체 데이터에서 볼륨 최대값 찾기
-    const maxVolumeInData = Math.max(
-      ...rawVolumeValues.filter((v) => isFinite(v) && v > 0)
-    );
-
     // 3. 최대 바 높이 설정 (조정 가능한 파라미터)
-    const maxBarHeight = 100; // 바의 최대 높이 (픽셀 단위로 생각할 수 있음)
+    const maxBarHeight = 100;
 
-    // 4. 스케일링 계수 계산 (모든 데이터가 maxBarHeight 이하로 스케일링되도록)
+    // 4. 스케일링 계수 계산
     const scalingFactor =
       maxVolumeInData > 0 ? maxBarHeight / maxVolumeInData : 1;
 
-    // 각 바 색상 결정 (기존 코드 유지)
-    const backgroundColor = candleData.map((candle) => {
-      // 캔들 데이터가 올바른 형식인지 확인
+    // 색상 및 스케일링된 볼륨 데이터를 동시에 계산
+    for (let i = 0; i < candleLength; i++) {
+      const candle = candleData[i];
+      const volume = rawVolumeValues[i];
+
+      // 색상 결정
       if (!candle || typeof candle !== "object") {
-        console.error("Invalid candle data:", candle);
-        return this.applyTransparency(chartColors.upBody, 0.4);
+        backgroundColor[i] = this.applyTransparency(chartColors.upBody, 0.4);
+      } else {
+        // 캔들스틱 차트와 동일한 방식으로 색상 결정
+        const isUp = Number(candle.o) <= Number(candle.c);
+        backgroundColor[i] = this.applyTransparency(
+          isUp ? chartColors.upBody : chartColors.downBody,
+          0.4
+        );
       }
 
-      // 캔들스틱 차트와 동일한 방식으로 색상 결정
-      const openPrice = Number(candle.o);
-      const closePrice = Number(candle.c);
-      const isUp = openPrice <= closePrice;
-
-      // 특정 타임스탬프인 경우 추가 로깅 (기존 코드 유지)
-      if (candle.x === targetTimestamp) {
-        // ... existing logging code ...
-      }
-
-      // chartColors와 정확히 동일한 색상 사용 (캔들차트와 일치)
-      return isUp
-        ? this.applyTransparency(chartColors.upBody, 0.4)
-        : this.applyTransparency(chartColors.downBody, 0.4);
-    });
-
-    // 볼륨 데이터 생성 (각 바의 최대 높이 제한 적용)
-    const scaledVolumeData = rawVolumeValues.map((volume) => {
       // 볼륨 값에 스케일링 적용 (최대값 제한)
       const scaledVolume = volume * scalingFactor;
-
       // 최소 바 길이 적용 (매우 작은 볼륨도 시각적으로 표시)
-      return Math.max(scaledVolume, volume > 0 ? 3 : 0);
-    });
+      scaledVolumeData[i] = Math.max(scaledVolume, volume > 0 ? 3 : 0);
+    }
 
-    return {
+    // 볼륨 차트 데이터셋 객체를 재사용 가능한 구조로 변경
+    const result = {
       labels: data.labels,
       datasets: [
         {
@@ -1621,10 +1627,16 @@ export class ChartTest {
           backgroundColor: backgroundColor,
           borderColor: backgroundColor,
           borderWidth: 0,
-          minBarLength: 3, // 최소 바 길이 설정 (작은 값도 시각적으로 보이도록)
+          minBarLength: 3,
         },
       ],
     };
+
+    // 참고: 여기서는 result 객체를 반환해야 하므로
+    // 내부 배열들은 객체 풀에 반환하지 않습니다.
+    // 이 배열들은 차트 라이브러리가 참조하기 때문입니다.
+
+    return result;
   }
 
   applyTransparency(color, alpha) {
@@ -1635,10 +1647,14 @@ export class ChartTest {
 
     let result;
 
+    // 문자열 연산을 최소화하기 위한 최적화
     if (color.startsWith("rgba")) {
+      // 정규식 연산을 한 번만 수행
       result = color.replace(/,\s*[\d\.]+\)$/, `, ${alpha})`);
     } else if (color.startsWith("rgb")) {
-      result = color.replace("rgb", "rgba").replace(")", `, ${alpha})`);
+      // 템플릿 리터럴을 사용하여 문자열 연산 최소화
+      const rgbValues = color.substring(4, color.length - 1);
+      result = `rgba(${rgbValues}, ${alpha})`;
     } else if (color.startsWith("#")) {
       // 정규식으로 한번에 파싱
       const hexMatch = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
@@ -1755,16 +1771,12 @@ export class ChartTest {
     if (!this.volumeChart) return;
 
     try {
-      // 볼륨 바 최대 높이에 맞춰 Y축 범위 설정
-      // formatVolumeData에서 설정한 maxBarHeight와 일치시킴
+      // 반복 계산 최소화
       const maxBarHeight = 100;
-
-      // 여유 공간 추가 (10% 정도)
       const padding = maxBarHeight * 0.1;
-      const suggestedMax = maxBarHeight + padding;
 
-      // Y축 설정
-      this.volumeChart.options.scales.y.suggestedMax = suggestedMax;
+      // 직접 값을 설정하여 중간 객체 생성 방지
+      this.volumeChart.options.scales.y.suggestedMax = maxBarHeight + padding;
       this.volumeChart.options.scales.y.min = 0;
     } catch (error) {
       console.warn("볼륨 차트 Y축 범위 조정 중 오류:", error);
