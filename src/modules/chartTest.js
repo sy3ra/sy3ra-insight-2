@@ -18,6 +18,32 @@ import { _isPointInArea } from "chart.js/helpers";
 // Chart.js에 필요한 요소 등록
 Chart.register(...registerables, CandlestickController, CandlestickElement);
 
+// 객체 풀링을 위한 클래스 추가
+class ObjectPool {
+  constructor(objectFactory, resetFunction, initialSize = 20) {
+    this.pool = [];
+    this.objectFactory = objectFactory;
+    this.resetFunction = resetFunction || ((obj) => obj);
+
+    // 초기 객체 생성
+    for (let i = 0; i < initialSize; i++) {
+      this.pool.push(this.objectFactory());
+    }
+  }
+
+  get() {
+    return this.pool.length > 0 ? this.pool.pop() : this.objectFactory();
+  }
+
+  release(object) {
+    if (object) {
+      // 객체 상태 초기화 및 풀에 반환
+      this.resetFunction(object);
+      this.pool.push(object);
+    }
+  }
+}
+
 export class ChartTest {
   constructor(chartCtx, crosshairCtx, overlayCtx, volumeChartCtx) {
     this.chartCtx = chartCtx;
@@ -31,16 +57,81 @@ export class ChartTest {
     this.labelsStack = [];
     this.dataStack = [];
     this.boundUpdateOverlayCanvas = this.updateOverlayCanvas.bind(this);
-    // this.boundUpdateVolumeChart = this.updateVolumeChart.bind(this);
     this.boundUpdateCharts = this.updateCharts.bind(this);
     this.isOverlaySubscribed = false;
-    this.isVolumeChartSubscribed = false;
     this.isChartUpdateSubscribed = false;
     this.chartNeedsUpdate = false;
     this.wheelDebounceTimer = null;
     this.chartUpdateRefCount = 0;
 
+    // 객체 풀 초기화
+    this.initObjectPools();
+
     this.initialize();
+  }
+
+  // 객체 풀 초기화 메서드 추가
+  initObjectPools() {
+    // 좌표 객체 풀 (x, y 좌표를 저장하는 객체)
+    this.pointPool = new ObjectPool(
+      () => ({ x: 0, y: 0 }),
+      (obj) => {
+        obj.x = 0;
+        obj.y = 0;
+        return obj;
+      },
+      50 // 초기 크기
+    );
+
+    // 라인 파라미터 객체 풀 (라인 그리기에 사용하는 파라미터 객체)
+    this.lineParamPool = new ObjectPool(
+      () => ({
+        startX: 0,
+        startY: 0,
+        endX: 0,
+        endY: 0,
+        color: "red",
+        width: 1,
+      }),
+      (obj) => {
+        obj.startX = obj.startY = obj.endX = obj.endY = 0;
+        obj.color = "red";
+        obj.width = 1;
+        return obj;
+      },
+      30
+    );
+
+    // 직사각형 파라미터 객체 풀 (영역 클리어링 등에 사용)
+    this.rectPool = new ObjectPool(
+      () => ({ x: 0, y: 0, width: 0, height: 0 }),
+      (obj) => {
+        obj.x = obj.y = obj.width = obj.height = 0;
+        return obj;
+      },
+      10
+    );
+
+    // 이벤트 정보 객체 풀
+    this.eventInfoPool = new ObjectPool(
+      () => ({ x: 0, y: 0, deltaX: 0, deltaY: 0, type: "" }),
+      (obj) => {
+        obj.x = obj.y = obj.deltaX = obj.deltaY = 0;
+        obj.type = "";
+        return obj;
+      },
+      20
+    );
+
+    // 임시 배열 풀 (재사용 가능한 배열 객체)
+    this.arrayPool = new ObjectPool(
+      () => [],
+      (arr) => {
+        arr.length = 0;
+        return arr;
+      },
+      10
+    );
   }
 
   async initialize() {
@@ -52,13 +143,10 @@ export class ChartTest {
       }
       console.log(data);
 
-      // const volumeData = this.formatVolumeData(data);
-
       // 데이터 시간 범위 설정
       this.setupTimeRange(data);
 
       // 차트 옵션 및 인스턴스 생성
-      // this.createCharts(data, volumeData);
       this.createCharts(data);
 
       // 초기 데이터 설정
@@ -103,7 +191,6 @@ export class ChartTest {
       data: data,
       options: chartOptions,
     });
-    // console.log("캔들 차트 인스턴스가 생성되었습니다.");
     console.log(this.chart.data);
 
     // 볼륨 차트 인스턴스 생성
@@ -113,35 +200,6 @@ export class ChartTest {
     //   options: volumeChartOptions,
     // });
     // console.log("볼륨 차트 인스턴스가 생성되었습니다.");
-
-    // chart 인스턴스 생성 후에 아래 코드를 실행합니다.
-    this.chart.getDatasetMeta = (datasetIndex) => {
-      const dataset = this.chart.data.datasets[datasetIndex];
-      const metasets = this.chart["_metasets"];
-      let meta = metasets[datasetIndex];
-      if (!meta) {
-        meta = {
-          type: null,
-          data: [],
-          dataset: null,
-          controller: null,
-          hidden: null,
-          xAxisID: null,
-          yAxisID: null,
-          order: (dataset && dataset.order) || 0,
-          index: datasetIndex,
-          _dataset: dataset,
-          _parsed: [],
-          _sorted: false,
-        };
-        metasets[datasetIndex] = meta;
-      }
-      return meta;
-    };
-
-    this.chart.notifyPlugins = (plugins) => {
-      return;
-    };
 
     // X축에 afterFit 이벤트 핸들러 등록
     this.setupAfterFitHandlers();
@@ -158,183 +216,14 @@ export class ChartTest {
     this.chart.options.elements.line.tension = 0; // 곡선 텐션 제거
     this.chart.options.elements.point.radius = 0; // 점 제거
     // this.volumeChart.options.animation = false;
-
-    // 캔들스틱 컨트롤러의 calculateElementProperties 메서드 오버라이드
-    const candlestickController =
-      this.chart.registry.controllers.get("candlestick");
-    if (candlestickController && candlestickController.prototype) {
-      // calculateElementProperties 메서드 오버라이드 (기존 코드)
-      const originalCalculateElementProperties =
-        candlestickController.prototype.calculateElementProperties;
-
-      candlestickController.prototype.calculateElementProperties = function (
-        mode,
-        reset
-      ) {
-        // 캐시 메커니즘 완화
-        if (
-          this._cachedProperties &&
-          !reset &&
-          mode === "default" &&
-          !this._forcePropertiesUpdate
-        ) {
-          return this._cachedProperties;
-        }
-
-        // 원래 메서드 호출
-        const result = originalCalculateElementProperties.call(
-          this,
-          mode,
-          reset
-        );
-
-        // 결과 캐싱
-        if (mode === "default") {
-          this._cachedProperties = result;
-          this._forcePropertiesUpdate = false;
-        }
-
-        return result;
-      };
-
-      // _getRuler 메서드 최적화
-      const originalGetRuler = candlestickController.prototype._getRuler;
-
-      // 룰러 캐시 객체
-      const rulerCache = {
-        cache: {},
-        lastMin: null,
-        lastMax: null,
-      };
-
-      candlestickController.prototype._getRuler = function () {
-        const me = this;
-        const meta = me._cachedMeta;
-        const xScale = meta.xScale;
-
-        // 캐싱 조건 완화 - 강제 업데이트 플래그 추가
-        if (
-          !this._forceRulerUpdate &&
-          rulerCache.lastMin === xScale.min &&
-          rulerCache.lastMax === xScale.max &&
-          rulerCache.cache[meta.type]
-        ) {
-          return rulerCache.cache[meta.type];
-        }
-
-        // 원래 메서드 호출
-        const ruler = originalGetRuler.call(this);
-
-        // 결과 캐싱
-        rulerCache.cache[meta.type] = ruler;
-        rulerCache.lastMin = xScale.min;
-        rulerCache.lastMax = xScale.max;
-        this._forceRulerUpdate = false;
-
-        return ruler;
-      };
-
-      // updateElements 메서드 최적화
-      const originalUpdateElements =
-        candlestickController.prototype.updateElements;
-
-      candlestickController.prototype.updateElements = function (
-        elements,
-        start,
-        count,
-        mode
-      ) {
-        // 이전 업데이트와 동일한 범위면 건너뛰기 - 조건 완화
-        if (
-          mode !== "reset" && // reset 모드는 항상 업데이트
-          this._lastUpdateStart === start &&
-          this._lastUpdateCount === count &&
-          this._lastUpdateMode === mode &&
-          !this._forceUpdate
-        ) {
-          return;
-        }
-
-        // 메타데이터 캐싱
-        if (!this._cachedMeta) {
-          this._cachedMeta = this._getMeta();
-        }
-
-        // 원래 메서드 호출
-        originalUpdateElements.call(this, elements, start, count, mode);
-
-        // 업데이트 정보 저장
-        this._lastUpdateStart = start;
-        this._lastUpdateCount = count;
-        this._lastUpdateMode = mode;
-        this._forceUpdate = false;
-      };
-
-      // 데이터 파싱 최적화 (기존 코드)
-      const originalParseObjectData =
-        candlestickController.prototype.parseObjectData;
-      if (originalParseObjectData) {
-        candlestickController.prototype.parseObjectData = function (
-          meta,
-          data,
-          start,
-          count
-        ) {
-          // 이미 파싱된 데이터가 있고 동일한 데이터 범위라면 재사용
-          if (
-            this._parsedData &&
-            this._parsedDataStart === start &&
-            this._parsedDataCount === count
-          ) {
-            return this._parsedData;
-          }
-
-          const result = originalParseObjectData.call(
-            this,
-            meta,
-            data,
-            start,
-            count
-          );
-
-          // 파싱 결과 캐싱
-          this._parsedData = result;
-          this._parsedDataStart = start;
-          this._parsedDataCount = count;
-
-          return result;
-        };
-      }
-    }
   }
 
   // afterFit 핸들러 설정 메서드 수정
   setupAfterFitHandlers() {
     // 메인 차트 X축 afterFit 핸들러
     this.chart.options.scales.x.afterFit = (scaleInstance) => {
-      if (
-        this.chartNeedsUpdate &&
-        !this.isUpdating &&
-        !this.isUpdatingImmediately
-      ) {
+      if (this.chartNeedsUpdate && !this.isUpdating) {
         this.isUpdating = true;
-
-        // 볼륨 차트 동기화 (철저하게)
-        // if (this.volumeChart) {
-        //   this.volumeChart.options.scales.x.min = this.chart.scales.x.min;
-        //   this.volumeChart.options.scales.x.max = this.chart.scales.x.max;
-        //   this.volumeChart.scales.x.min = this.chart.scales.x.min;
-        //   this.volumeChart.scales.x.max = this.chart.scales.x.max;
-
-        //   // 캔들차트의 차트영역과 일치하도록 설정
-        //   this.volumeChart.chartArea.left = this.chart.chartArea.left;
-        //   this.volumeChart.chartArea.right = this.chart.chartArea.right;
-        // }
-
-        // 렌더링 최적화
-        // if (this.volumeChart) {
-        //   this.volumeChart.update("none");
-        // }
 
         // 오버레이 업데이트
         this.updateOverlayCanvas();
@@ -358,7 +247,7 @@ export class ChartTest {
     // }
   }
 
-  // 커스텀 휠 및 마우스 이벤트 핸들러 설정
+  // 커스텀 휠 및 마우스 이벤트 핸들러 설정 - 객체 풀링 적용
   setupCustomControlsHandler() {
     const canvas = this.chartCtx.canvas;
 
@@ -370,6 +259,7 @@ export class ChartTest {
     let lastWheelTime = 0;
     let lastWheelFrameId = 0;
     let lastMouseDownFrameId = 0;
+    let lastMouseLeaveFrameId = 0;
     let currentFrame = 0;
 
     // 프레임 ID 업데이트 함수
@@ -381,7 +271,7 @@ export class ChartTest {
     // 프레임 ID 업데이트 시작
     updateFrameId();
 
-    // 휠 이벤트 처리
+    // 휠 이벤트 처리 - 객체 풀링 적용
     const handleWheel = (e) => {
       // 이벤트 기본 동작 방지
       e.preventDefault();
@@ -406,19 +296,24 @@ export class ChartTest {
       lastWheelTime = now;
       lastWheelFrameId = currentFrame;
 
-      // 나머지 휠 처리 로직은 그대로 유지
+      // 객체 풀에서 이벤트 정보 객체 재사용
+      const eventInfo = this.eventInfoPool.get();
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      eventInfo.x = e.clientX - rect.left;
+      eventInfo.y = e.clientY - rect.top;
+      eventInfo.type = "wheel";
+      eventInfo.deltaY = e.deltaY;
 
       // 차트 영역 확인
       const chartArea = this.chart.chartArea;
       if (
-        x < chartArea.left ||
-        x > chartArea.right ||
-        y < chartArea.top ||
-        y > chartArea.bottom
+        eventInfo.x < chartArea.left ||
+        eventInfo.x > chartArea.right ||
+        eventInfo.y < chartArea.top ||
+        eventInfo.y > chartArea.bottom
       ) {
+        // 객체 반환 후 종료
+        this.eventInfoPool.release(eventInfo);
         return;
       }
 
@@ -427,13 +322,16 @@ export class ChartTest {
 
       // 휠 처리 로직
       const speed = 0.1;
-      const delta = e.deltaY > 0 ? 1 - speed : 1 + speed;
+      const delta = eventInfo.deltaY > 0 ? 1 - speed : 1 + speed;
 
       // 줌 방향 결정
       const direction = isModifierPressed ? "y" : "x";
 
       // 차트 줌 실행 및 즉시 업데이트 적용
-      this.zoomChartImmediate(x, y, delta, direction);
+      this.zoomChartImmediate(eventInfo.x, eventInfo.y, delta, direction);
+
+      // 객체 풀에 반환
+      this.eventInfoPool.release(eventInfo);
 
       // 구독 관련 코드 복원
       if (!isWheelActive) {
@@ -455,7 +353,7 @@ export class ChartTest {
       }, 10);
     };
 
-    // 마우스 다운 이벤트 핸들러
+    // 마우스 다운 이벤트 핸들러 - 객체 풀링 적용
     const handleMouseDown = (e) => {
       // 오른쪽 마우스 클릭 무시
       if (e.button === 2) return;
@@ -466,33 +364,53 @@ export class ChartTest {
       }
       lastMouseDownFrameId = currentFrame;
 
+      // 객체 풀에서 이벤트 정보 객체 재사용
+      const eventInfo = this.eventInfoPool.get();
       const rect = canvas.getBoundingClientRect();
-      lastMouseX = e.clientX - rect.left;
-      lastMouseY = e.clientY - rect.top;
+      eventInfo.x = e.clientX - rect.left;
+      eventInfo.y = e.clientY - rect.top;
+      eventInfo.type = "mousedown";
 
-      if (!this.isPointInChartArea({ x: lastMouseX, y: lastMouseY })) return;
+      lastMouseX = eventInfo.x;
+      lastMouseY = eventInfo.y;
+
+      const pointToCheck = this.pointPool.get();
+      pointToCheck.x = lastMouseX;
+      pointToCheck.y = lastMouseY;
+
+      if (!this.isPointInChartArea(pointToCheck)) {
+        this.pointPool.release(pointToCheck);
+        this.eventInfoPool.release(eventInfo);
+        return;
+      }
+      this.pointPool.release(pointToCheck);
 
       isDragging = true;
       this.subscribeChartUpdate("mouse-down");
+      this.eventInfoPool.release(eventInfo);
 
       e.preventDefault();
     };
 
-    // 마우스 이동 이벤트 핸들러
+    // 마우스 이동 이벤트 핸들러 - 객체 풀링 적용
     const handleMouseMove = (e) => {
       if (!isDragging || !this.chart) return;
 
+      // 객체 풀에서 이벤트 정보 객체 재사용
+      const eventInfo = this.eventInfoPool.get();
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      eventInfo.x = e.clientX - rect.left;
+      eventInfo.y = e.clientY - rect.top;
+      eventInfo.deltaX = eventInfo.x - lastMouseX;
+      eventInfo.deltaY = eventInfo.y - lastMouseY;
+      eventInfo.type = "mousemove";
 
-      const dx = x - lastMouseX;
-      const dy = y - lastMouseY;
+      this.panChart(eventInfo.deltaX, eventInfo.deltaY);
 
-      this.panChart(dx, dy);
+      lastMouseX = eventInfo.x;
+      lastMouseY = eventInfo.y;
 
-      lastMouseX = x;
-      lastMouseY = y;
+      this.eventInfoPool.release(eventInfo);
     };
 
     // 마우스 업 이벤트 핸들러
@@ -530,7 +448,7 @@ export class ChartTest {
     */
   }
 
-  // 새로운 즉시 업데이트 메서드 추가
+  // 객체 풀링을 적용한 줌 메서드
   zoomChartImmediate(x, y, scale, direction = "x") {
     if (!this.chart) return;
 
@@ -569,14 +487,6 @@ export class ChartTest {
         yScale.options.max = newMax;
       }
 
-      // 캔들스틱 컨트롤러에 강제 업데이트 플래그 설정
-      const candlestickController = this.chart.getDatasetMeta(0).controller;
-      if (candlestickController) {
-        candlestickController._forceUpdate = true;
-        candlestickController._forceRulerUpdate = true;
-        candlestickController._forcePropertiesUpdate = true;
-      }
-
       // 즉시 차트 업데이트 실행
       this.chart.update("none");
 
@@ -585,7 +495,6 @@ export class ChartTest {
 
       // 업데이트 플래그도 설정 (다른 시스템과의 호환성 유지)
       this.chartNeedsUpdate = false;
-      this.isUpdatingImmediately = false;
 
       // 데이터 범위 확인 (과거 데이터 로딩 필요한지)
       if (xScale.options.min <= this.earliestX && !this.isLoading) {
@@ -619,11 +528,6 @@ export class ChartTest {
       yScale.options.min = newYMin;
       yScale.options.max = newYMax;
     }
-
-    // if (this.volumeChart) {
-    //   this.volumeChart.options.scales.x.min = xScale.options.min;
-    //   this.volumeChart.options.scales.x.max = xScale.options.max;
-    // }
 
     if (xScale.options.min <= this.earliestX && !this.isLoading) {
       this.debouncedCheckLimitReached();
@@ -841,25 +745,37 @@ export class ChartTest {
 
   // 데이터 포맷팅 함수
   xohlcvFormatData(data) {
-    const formattedData = data.map((item) => ({
-      x: item[0],
-      o: item[1],
-      h: item[2],
-      l: item[3],
-      c: item[4],
-      v: item[5],
-    }));
+    // 단일 순회로 labels와 데이터 배열을 동시에 구성
+    const dataLength = data.length;
+    const formattedData = new Array(dataLength);
+    const labels = new Array(dataLength);
+
+    for (let i = 0; i < dataLength; i++) {
+      const item = data[i];
+      labels[i] = item[0];
+      formattedData[i] = {
+        x: item[0],
+        o: item[1],
+        h: item[2],
+        l: item[3],
+        c: item[4],
+        v: item[5],
+      };
+    }
+
+    // 불변 색상 객체를 한 번만 생성
+    const bgColors = {
+      up: chartColors.upBody,
+      down: chartColors.downBody,
+    };
 
     return {
-      labels: formattedData.map((item) => item.x),
+      labels,
       datasets: [
         {
           label: "BTC/USDT Chart",
           data: formattedData,
-          backgroundColors: {
-            up: chartColors.upBody,
-            down: chartColors.downBody,
-          },
+          backgroundColors: bgColors,
           radius: 0,
           borderWidth: 0,
         },
@@ -931,20 +847,21 @@ export class ChartTest {
   }
 
   appendNewData(formattedData) {
-    this.labelsStack = [...formattedData.labels, ...this.labelsStack];
-    this.dataStack = [...formattedData.datasets[0].data, ...this.dataStack];
+    // 배열 복사본을 여러 번 생성하는 방식 개선
+    const newLabels = formattedData.labels;
+    const newData = formattedData.datasets[0].data;
 
+    // 기존 데이터의 앞부분에 새 데이터 추가 (spread 연산자 대신 직접 할당)
+    const labelsLength = newLabels.length;
+    const dataLength = newData.length;
+
+    // 기존 배열 앞에 새 데이터를 추가할 충분한 공간 확보
+    this.labelsStack.unshift(...newLabels);
+    this.dataStack.unshift(...newData);
+
+    // 참조로 차트 데이터 업데이트
     this.chart.data.labels = this.labelsStack;
     this.chart.data.datasets[0].data = this.dataStack;
-
-    // if (this.volumeChart) {
-    //   const volumeData = this.formatVolumeData({
-    //     labels: this.labelsStack,
-    //     datasets: [{ data: this.dataStack }],
-    //   });
-    //   this.volumeChart.data.labels = volumeData.labels;
-    //   this.volumeChart.data.datasets = volumeData.datasets;
-    // }
   }
 
   updateChartLimits() {
@@ -958,14 +875,6 @@ export class ChartTest {
     if (!this.chart) return;
 
     if (this.chartNeedsUpdate) {
-      // 캔들스틱 컨트롤러에 강제 업데이트 플래그 설정
-      const candlestickController = this.chart.getDatasetMeta(0).controller;
-      if (candlestickController) {
-        candlestickController._forceUpdate = true;
-        candlestickController._forceRulerUpdate = true;
-        candlestickController._forcePropertiesUpdate = true;
-      }
-
       this.updateChart();
       this.updateOverlayCanvas();
 
@@ -1119,190 +1028,315 @@ export class ChartTest {
   }
 
   drawExtendedLine(startX, startY, endX, endY, chartArea) {
-    const startXPixel = this.chart.scales.x.getPixelForValue(startX);
-    const endXPixel = this.chart.scales.x.getPixelForValue(endX);
-    const startYPixel = this.chart.scales.y.getPixelForValue(startY);
-    const endYPixel = this.chart.scales.y.getPixelForValue(endY);
+    // 객체 풀에서 좌표 객체 가져오기
+    const startPoint = this.pointPool.get();
+    const endPoint = this.pointPool.get();
+
+    startPoint.x = this.chart.scales.x.getPixelForValue(startX);
+    startPoint.y = this.chart.scales.y.getValueForPixel(startY);
+    endPoint.x = this.chart.scales.x.getPixelForValue(endX);
+    endPoint.y = this.chart.scales.y.getValueForPixel(endY);
 
     const slope = calculateSlope(
-      startXPixel,
-      startYPixel,
-      endXPixel,
-      endYPixel
+      startPoint.x,
+      startPoint.y,
+      endPoint.x,
+      endPoint.y
     );
 
-    let startPx, endPx;
+    // 라인 파라미터 객체 풀에서 가져오기
+    const lineParams = this.lineParamPool.get();
 
     if (slope === Infinity || slope === -Infinity) {
-      startPx = { x: startXPixel, y: chartArea.top };
-      endPx = { x: startXPixel, y: chartArea.bottom };
+      lineParams.startX = startPoint.x;
+      lineParams.startY = chartArea.top;
+      lineParams.endX = startPoint.x;
+      lineParams.endY = chartArea.bottom;
     } else if (slope === 0) {
-      startPx = { x: chartArea.left, y: startYPixel };
-      endPx = { x: chartArea.right, y: startYPixel };
+      lineParams.startX = chartArea.left;
+      lineParams.startY = startPoint.y;
+      lineParams.endX = chartArea.right;
+      lineParams.endY = startPoint.y;
     } else {
-      const yAtLeft = startYPixel - slope * (startXPixel - chartArea.left);
-      const yAtRight = startYPixel + slope * (chartArea.right - startXPixel);
+      const yAtLeft = startPoint.y - slope * (startPoint.x - chartArea.left);
+      const yAtRight = startPoint.y + slope * (chartArea.right - startPoint.x);
 
-      const xAtTop = startXPixel + (chartArea.top - startYPixel) / slope;
-      const xAtBottom = startXPixel + (chartArea.bottom - startYPixel) / slope;
+      const xAtTop = startPoint.x + (chartArea.top - startPoint.y) / slope;
+      const xAtBottom =
+        startPoint.x + (chartArea.bottom - startPoint.y) / slope;
 
       if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
-        startPx = { x: chartArea.left, y: yAtLeft };
+        lineParams.startX = chartArea.left;
+        lineParams.startY = yAtLeft;
       } else if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
-        startPx = { x: xAtTop, y: chartArea.top };
+        lineParams.startX = xAtTop;
+        lineParams.startY = chartArea.top;
       } else {
-        startPx = { x: chartArea.left, y: yAtLeft };
+        lineParams.startX = chartArea.left;
+        lineParams.startY = yAtLeft;
       }
 
       if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
-        endPx = { x: chartArea.right, y: yAtRight };
+        lineParams.endX = chartArea.right;
+        lineParams.endY = yAtRight;
       } else if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
-        endPx = { x: xAtBottom, y: chartArea.bottom };
+        lineParams.endX = xAtBottom;
+        lineParams.endY = chartArea.bottom;
       } else {
-        endPx = { x: chartArea.right, y: yAtRight };
+        lineParams.endX = chartArea.right;
+        lineParams.endY = yAtRight;
       }
     }
 
+    lineParams.color = "red";
+    lineParams.width = 1;
+
     drawLine(
       this.overlayCtx,
-      startPx.x,
-      startPx.y,
-      endPx.x,
-      endPx.y,
-      "red",
-      1,
+      lineParams.startX,
+      lineParams.startY,
+      lineParams.endX,
+      lineParams.endY,
+      lineParams.color,
+      lineParams.width,
       chartArea
     );
+
+    // 사용 완료 후 객체 풀에 반환
+    this.lineParamPool.release(lineParams);
+    this.pointPool.release(startPoint);
+    this.pointPool.release(endPoint);
   }
 
   drawRay(startX, startY, endX, endY, chartArea) {
-    const startXPixel = this.chart.scales.x.getPixelForValue(startX);
-    const endXPixel = this.chart.scales.x.getPixelForValue(endX);
-    const startYPixel = this.chart.scales.y.getPixelForValue(startY);
-    const endYPixel = this.chart.scales.y.getPixelForValue(endY);
+    // 객체 풀에서 좌표 객체 가져오기
+    const startPoint = this.pointPool.get();
+    const endPoint = this.pointPool.get();
+
+    startPoint.x = this.chart.scales.x.getPixelForValue(startX);
+    startPoint.y = this.chart.scales.y.getValueForPixel(startY);
+    endPoint.x = this.chart.scales.x.getPixelForValue(endX);
+    endPoint.y = this.chart.scales.y.getValueForPixel(endY);
 
     const slope = calculateSlope(
-      startXPixel,
-      startYPixel,
-      endXPixel,
-      endYPixel
+      startPoint.x,
+      startPoint.y,
+      endPoint.x,
+      endPoint.y
     );
 
     const direction = calculateDirection(
-      startXPixel,
-      startYPixel,
-      endXPixel,
-      endYPixel
+      startPoint.x,
+      startPoint.y,
+      endPoint.x,
+      endPoint.y
     );
 
-    let endPx;
+    // 라인 파라미터 객체 풀에서 가져오기
+    const lineParams = this.lineParamPool.get();
+    lineParams.startX = startPoint.x;
+    lineParams.startY = startPoint.y;
 
     if (slope === Infinity || slope === -Infinity) {
-      endPx = {
-        x: startXPixel,
-        y: direction.y > 0 ? chartArea.bottom : chartArea.top,
-      };
+      lineParams.endX = startPoint.x;
+      lineParams.endY = direction.y > 0 ? chartArea.bottom : chartArea.top;
     } else if (slope === 0) {
-      endPx = {
-        x: direction.x > 0 ? chartArea.right : chartArea.left,
-        y: startYPixel,
-      };
+      lineParams.endX = direction.x > 0 ? chartArea.right : chartArea.left;
+      lineParams.endY = startPoint.y;
     } else {
-      const intersections = [];
+      // 교차점을 찾는 로직
+      let minDistance = Number.MAX_VALUE;
+      let bestX = endPoint.x;
+      let bestY = endPoint.y;
 
-      const yAtRight = startYPixel + slope * (chartArea.right - startXPixel);
+      // 오른쪽 경계와의 교차점 확인
+      const yAtRight = startPoint.y + slope * (chartArea.right - startPoint.x);
       if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
-        intersections.push({
-          x: chartArea.right,
-          y: yAtRight,
-          distance:
-            Math.pow(chartArea.right - startXPixel, 2) +
-            Math.pow(yAtRight - startYPixel, 2),
-          direction: { x: 1, y: yAtRight > startYPixel ? 1 : -1 },
-        });
+        const distRight =
+          Math.pow(chartArea.right - startPoint.x, 2) +
+          Math.pow(yAtRight - startPoint.y, 2);
+        const dirMatchX = direction.x > 0;
+        const dirMatchY = yAtRight > startPoint.y === direction.y > 0;
+
+        if (
+          (dirMatchX || direction.x === 0) &&
+          (dirMatchY || direction.y === 0) &&
+          distRight < minDistance
+        ) {
+          minDistance = distRight;
+          bestX = chartArea.right;
+          bestY = yAtRight;
+        }
       }
 
-      const yAtLeft = startYPixel + slope * (chartArea.left - startXPixel);
+      // 왼쪽 경계와의 교차점 확인
+      const yAtLeft = startPoint.y + slope * (chartArea.left - startPoint.x);
       if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
-        intersections.push({
-          x: chartArea.left,
-          y: yAtLeft,
-          distance:
-            Math.pow(chartArea.left - startXPixel, 2) +
-            Math.pow(yAtLeft - startYPixel, 2),
-          direction: { x: -1, y: yAtLeft > startYPixel ? 1 : -1 },
-        });
+        const distLeft =
+          Math.pow(chartArea.left - startPoint.x, 2) +
+          Math.pow(yAtLeft - startPoint.y, 2);
+        const dirMatchX = direction.x < 0;
+        const dirMatchY = yAtLeft > startPoint.y === direction.y > 0;
+
+        if (
+          (dirMatchX || direction.x === 0) &&
+          (dirMatchY || direction.y === 0) &&
+          distLeft < minDistance
+        ) {
+          minDistance = distLeft;
+          bestX = chartArea.left;
+          bestY = yAtLeft;
+        }
       }
 
-      const xAtTop = startXPixel + (chartArea.top - startYPixel) / slope;
+      // 상단 경계와의 교차점 확인
+      const xAtTop = startPoint.x + (chartArea.top - startPoint.y) / slope;
       if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
-        intersections.push({
-          x: xAtTop,
-          y: chartArea.top,
-          distance:
-            Math.pow(xAtTop - startXPixel, 2) +
-            Math.pow(chartArea.top - startYPixel, 2),
-          direction: { x: xAtTop > startXPixel ? 1 : -1, y: -1 },
-        });
+        const distTop =
+          Math.pow(xAtTop - startPoint.x, 2) +
+          Math.pow(chartArea.top - startPoint.y, 2);
+        const dirMatchX = xAtTop > startPoint.x === direction.x > 0;
+        const dirMatchY = direction.y < 0;
+
+        if (
+          (dirMatchX || direction.x === 0) &&
+          (dirMatchY || direction.y === 0) &&
+          distTop < minDistance
+        ) {
+          minDistance = distTop;
+          bestX = xAtTop;
+          bestY = chartArea.top;
+        }
       }
 
-      const xAtBottom = startXPixel + (chartArea.bottom - startYPixel) / slope;
+      // 하단 경계와의 교차점 확인
+      const xAtBottom =
+        startPoint.x + (chartArea.bottom - startPoint.y) / slope;
       if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
-        intersections.push({
-          x: xAtBottom,
-          y: chartArea.bottom,
-          distance:
-            Math.pow(xAtBottom - startXPixel, 2) +
-            Math.pow(chartArea.bottom - startYPixel, 2),
-          direction: { x: xAtBottom > startXPixel ? 1 : -1, y: 1 },
-        });
+        const distBottom =
+          Math.pow(xAtBottom - startPoint.x, 2) +
+          Math.pow(chartArea.bottom - startPoint.y, 2);
+        const dirMatchX = xAtBottom > startPoint.x === direction.x > 0;
+        const dirMatchY = direction.y > 0;
+
+        if (
+          (dirMatchX || direction.x === 0) &&
+          (dirMatchY || direction.y === 0) &&
+          distBottom < minDistance
+        ) {
+          minDistance = distBottom;
+          bestX = xAtBottom;
+          bestY = chartArea.bottom;
+        }
       }
 
-      const validIntersections = intersections.filter(
-        (intersection) =>
-          (intersection.direction.x === direction.x ||
-            intersection.direction.x === 0) &&
-          (intersection.direction.y === direction.y ||
-            intersection.direction.y === 0)
-      );
-
-      if (validIntersections.length > 0) {
-        endPx = validIntersections.reduce((closest, current) =>
-          current.distance < closest.distance ? current : closest
-        );
-      } else {
-        endPx = { x: endXPixel, y: endYPixel };
-      }
+      lineParams.endX = bestX;
+      lineParams.endY = bestY;
     }
 
+    lineParams.color = "red";
+    lineParams.width = 1;
+
     drawLine(
       this.overlayCtx,
-      startXPixel,
-      startYPixel,
-      endPx.x,
-      endPx.y,
-      "red",
-      1,
+      lineParams.startX,
+      lineParams.startY,
+      lineParams.endX,
+      lineParams.endY,
+      lineParams.color,
+      lineParams.width,
       chartArea
     );
+
+    // 사용 완료 후 객체 풀에 반환
+    this.lineParamPool.release(lineParams);
+    this.pointPool.release(startPoint);
+    this.pointPool.release(endPoint);
   }
 
+  // 객체 풀링을 적용하여 단순 라인 그리기 메서드 최적화
   drawSimpleLine(startX, startY, endX, endY, chartArea) {
-    const startXPixel = this.chart.scales.x.getPixelForValue(startX);
-    const endXPixel = this.chart.scales.x.getPixelForValue(endX);
-    const startYPixel = this.chart.scales.y.getPixelForValue(startY);
-    const endYPixel = this.chart.scales.y.getPixelForValue(endY);
+    // 라인 파라미터 객체 풀에서 가져오기
+    const lineParams = this.lineParamPool.get();
+
+    lineParams.startX = this.chart.scales.x.getPixelForValue(startX);
+    lineParams.startY = this.chart.scales.y.getPixelForValue(startY);
+    lineParams.endX = this.chart.scales.x.getPixelForValue(endX);
+    lineParams.endY = this.chart.scales.y.getPixelForValue(endY);
+    lineParams.color = "red";
+    lineParams.width = 1;
 
     drawLine(
       this.overlayCtx,
-      startXPixel,
-      startYPixel,
-      endXPixel,
-      endYPixel,
-      "red",
-      1,
+      lineParams.startX,
+      lineParams.startY,
+      lineParams.endX,
+      lineParams.endY,
+      lineParams.color,
+      lineParams.width,
       chartArea
     );
+
+    // 사용 완료 후 객체 풀에 반환
+    this.lineParamPool.release(lineParams);
+  }
+
+  // 객체 풀링을 적용하여 수평선 그리기 메서드 최적화
+  drawHorizontalLine(yValue, chartArea) {
+    const yPixel = this.chart.scales.y.getPixelForValue(yValue);
+
+    // 라인 파라미터 객체 풀에서 가져오기
+    const lineParams = this.lineParamPool.get();
+
+    lineParams.startX = chartArea.left;
+    lineParams.startY = yPixel;
+    lineParams.endX = chartArea.right;
+    lineParams.endY = yPixel;
+    lineParams.color = "red";
+    lineParams.width = 1;
+
+    drawLine(
+      this.overlayCtx,
+      lineParams.startX,
+      lineParams.startY,
+      lineParams.endX,
+      lineParams.endY,
+      lineParams.color,
+      lineParams.width,
+      chartArea
+    );
+
+    // 사용 완료 후 객체 풀에 반환
+    this.lineParamPool.release(lineParams);
+  }
+
+  // 객체 풀링을 적용하여 수직선 그리기 메서드 최적화
+  drawVerticalLine(xValue, chartArea) {
+    const xPixel = this.chart.scales.x.getPixelForValue(xValue);
+
+    // 라인 파라미터 객체 풀에서 가져오기
+    const lineParams = this.lineParamPool.get();
+
+    lineParams.startX = xPixel;
+    lineParams.startY = chartArea.top;
+    lineParams.endX = xPixel;
+    lineParams.endY = chartArea.bottom;
+    lineParams.color = "red";
+    lineParams.width = 1;
+
+    drawLine(
+      this.overlayCtx,
+      lineParams.startX,
+      lineParams.startY,
+      lineParams.endX,
+      lineParams.endY,
+      lineParams.color,
+      lineParams.width,
+      chartArea
+    );
+
+    // 사용 완료 후 객체 풀에 반환
+    this.lineParamPool.release(lineParams);
   }
 
   updateOverlayCanvas() {
@@ -1351,48 +1385,89 @@ export class ChartTest {
 
   formatVolumeData(data) {
     const candleData = data.datasets[0].data;
-    const backgroundColor = candleData.map((candle) => {
+    const labels = data.labels;
+    const dataLength = candleData.length;
+
+    // 객체 풀에서 배열 객체 가져오기
+    const dataArr = this.arrayPool.get();
+    const bgColorArr = this.arrayPool.get();
+    const borderColorArr = this.arrayPool.get();
+
+    // 배열 크기 설정
+    dataArr.length = dataLength;
+    bgColorArr.length = dataLength;
+    borderColorArr.length = dataLength;
+
+    // 단일 루프로 처리하여 불필요한 배열 생성 방지
+    for (let i = 0; i < dataLength; i++) {
+      const candle = candleData[i];
+
       if (!candle || typeof candle !== "object") {
-        console.error("Invalid candle data:", candle);
-        return this.applyTransparency(chartColors.upBody, 0.4);
+        dataArr[i] = 0;
+        bgColorArr[i] = this.applyTransparency(chartColors.upBody, 0.4);
+        borderColorArr[i] = bgColorArr[i];
+        continue;
       }
+
       const openPrice = Number(candle.o);
       const closePrice = Number(candle.c);
       const isUp = openPrice <= closePrice;
-      return isUp
+      const color = isUp
         ? this.applyTransparency(chartColors.upBody, 0.4)
         : this.applyTransparency(chartColors.downBody, 0.4);
-    });
 
-    return {
-      labels: data.labels,
+      dataArr[i] = candle.v / 10;
+      bgColorArr[i] = color;
+      borderColorArr[i] = color;
+    }
+
+    // 결과 객체 생성
+    const result = {
+      labels: labels,
       datasets: [
         {
-          data: candleData.map((item) => item.v / 10),
-          backgroundColor: backgroundColor,
-          borderColor: backgroundColor,
+          data: dataArr,
+          backgroundColor: bgColorArr,
+          borderColor: borderColorArr,
           borderWidth: 0,
           radius: 0,
-          // indexAxis: "x",
-          // parsing: false,
           minBarLength: 10,
         },
       ],
     };
+
+    return result;
   }
 
   applyTransparency(color, alpha) {
+    // 캐시 추가로 반복적인 계산 방지
+    const cacheKey = `${color}_${alpha}`;
+    if (!this._colorCache) this._colorCache = {};
+    if (this._colorCache[cacheKey]) return this._colorCache[cacheKey];
+
+    let result;
+
     if (color.startsWith("rgba")) {
-      return color.replace(/,\s*[\d\.]+\)$/, `, ${alpha})`);
+      result = color.replace(/,\s*[\d\.]+\)$/, `, ${alpha})`);
     } else if (color.startsWith("rgb")) {
-      return color.replace("rgb", "rgba").replace(")", `, ${alpha})`);
+      result = color.replace("rgb", "rgba").replace(")", `, ${alpha})`);
     } else if (color.startsWith("#")) {
-      const r = parseInt(color.substring(1, 3), 16);
-      const g = parseInt(color.substring(3, 5), 16);
-      const b = parseInt(color.substring(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      // 정규식으로 한번에 파싱
+      const hexMatch = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
+      if (hexMatch) {
+        const r = parseInt(hexMatch[1], 16);
+        const g = parseInt(hexMatch[2], 16);
+        const b = parseInt(hexMatch[3], 16);
+        result = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      } else {
+        result = color;
+      }
+    } else {
+      result = color;
     }
-    return color;
+
+    this._colorCache[cacheKey] = result;
+    return result;
   }
 
   setupSafetyChecks() {
