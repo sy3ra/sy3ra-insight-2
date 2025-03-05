@@ -72,6 +72,15 @@ export class ChartTest {
     this.wheelDebounceTimer = null;
     this.chartUpdateRefCount = 0;
 
+    // 렌더링 최적화를 위한 변수 추가
+    this.isRenderPending = false;
+    this.lastRenderTimestamp = 0;
+    this.frameIntervals = []; // 프레임 간격 추적용 배열
+    this.refreshRate = 60; // 기본값 (동적으로 갱신됨)
+
+    // 모니터 주사율 감지 메소드 호출
+    this.detectRefreshRate();
+
     // 객체 풀 초기화
     this.initObjectPools();
 
@@ -298,38 +307,34 @@ export class ChartTest {
     // 프레임 ID 업데이트 시작
     updateFrameId();
 
-    // 휠 이벤트 처리 - 객체 풀링 적용
+    // 휠 이벤트 처리 함수 수정
     const handleWheel = (e) => {
-      // 이벤트 기본 동작 방지
       e.preventDefault();
 
-      // 현재 시간 및 프레임 확인
-      const now = Date.now();
-
-      // 같은 프레임에서 이미 휠 이벤트를 처리했다면 무시 (기존 프레임 제한 유지)
+      // 동일 프레임 중복 방지 로직
       if (lastWheelFrameId === currentFrame) {
-        e.preventDefault();
+        this.accumulatedDeltaY = (this.accumulatedDeltaY || 0) + e.deltaY;
         return;
       }
 
       // 시간 제한 (throttling)
+      const now = Date.now();
       if (now - lastWheelTime < 8) {
-        // 약 60fps
-        e.preventDefault();
+        this.accumulatedDeltaY = (this.accumulatedDeltaY || 0) + e.deltaY;
         return;
       }
 
-      // 시간 및 프레임 ID 업데이트
       lastWheelTime = now;
       lastWheelFrameId = currentFrame;
 
-      // 객체 풀에서 이벤트 정보 객체 재사용
+      // 이벤트 처리 로직
       const eventInfo = this.eventInfoPool.get();
       const rect = canvas.getBoundingClientRect();
       eventInfo.x = e.clientX - rect.left;
       eventInfo.y = e.clientY - rect.top;
       eventInfo.type = "wheel";
-      eventInfo.deltaY = e.deltaY;
+      eventInfo.deltaY = this.accumulatedDeltaY || e.deltaY;
+      this.accumulatedDeltaY = 0;
 
       // 차트 영역 확인
       const chartArea = this.chart.chartArea;
@@ -339,41 +344,37 @@ export class ChartTest {
         eventInfo.y < chartArea.top ||
         eventInfo.y > chartArea.bottom
       ) {
-        // 객체 반환 후 종료
         this.eventInfoPool.release(eventInfo);
         return;
       }
 
-      // 수정자 키 확인 (Shift 키, Command 키(Mac), Control 키(Windows))
+      // 수정자 키 확인 및 줌 속도/방향 설정
       const isModifierPressed = e.shiftKey || e.metaKey || e.ctrlKey;
-
-      // 휠 처리 로직
       const speed = 0.1;
       const delta = eventInfo.deltaY > 0 ? 1 - speed : 1 + speed;
-
-      // 줌 방향 결정
       const direction = isModifierPressed ? "y" : "x";
 
-      // 차트 줌 실행 및 즉시 업데이트 적용
-      this.zoomChartImmediate(eventInfo.x, eventInfo.y, delta, direction);
+      // 차트 상태 업데이트 (렌더링은 따로 요청)
+      this.updateChartState(eventInfo.x, eventInfo.y, delta, direction);
+
+      // 통합된 렌더링 요청 메커니즘 사용
+      this.requestUnifiedRender();
 
       // 객체 풀에 반환
       this.eventInfoPool.release(eventInfo);
 
-      // 구독 관련 코드 복원
+      // 구독 관련 코드는 유지
       if (!isWheelActive) {
         isWheelActive = true;
-        console.log("휠 이벤트 시작: 구독 시작");
         this.subscribeChartUpdate("wheel");
       }
 
-      // 디바운싱은 유지
+      // 디바운싱도 유지
       if (this.wheelDebounceTimer) {
         clearTimeout(this.wheelDebounceTimer);
       }
 
       this.wheelDebounceTimer = setTimeout(() => {
-        console.log("휠 타이머 종료");
         isWheelActive = false;
         this.unsubscribeChartUpdate("wheel-timer");
         this.wheelDebounceTimer = null;
@@ -419,7 +420,7 @@ export class ChartTest {
       e.preventDefault();
     };
 
-    // 마우스 이동 이벤트 핸들러 - 객체 풀링 적용
+    // 마우스 이동 이벤트 핸들러 최적화
     const handleMouseMove = (e) => {
       if (!isDragging || !this.chart) return;
 
@@ -432,7 +433,10 @@ export class ChartTest {
       eventInfo.deltaY = eventInfo.y - lastMouseY;
       eventInfo.type = "mousemove";
 
-      this.panChart(eventInfo.deltaX, eventInfo.deltaY);
+      // 배치 업데이트를 위해 queueChartUpdate 사용
+      this.queueChartUpdate(() => {
+        this.panChart(eventInfo.deltaX, eventInfo.deltaY);
+      });
 
       lastMouseX = eventInfo.x;
       lastMouseY = eventInfo.y;
@@ -475,8 +479,62 @@ export class ChartTest {
     */
   }
 
-  // 객체 풀링을 적용한 줌 메서드
-  zoomChartImmediate(x, y, scale, direction = "x") {
+  // Add this new method to batch render operations
+  queueChartUpdate(updateFn) {
+    // Execute the update function to prepare changes
+    updateFn();
+
+    // Set flag for pending update
+    this.chartNeedsUpdate = true;
+
+    // Use requestAnimationFrame to batch all updates into a single render cycle
+    if (!this.pendingRenderRequest) {
+      this.pendingRenderRequest = requestAnimationFrame(() => {
+        this.renderAllCharts();
+        this.pendingRenderRequest = null;
+      });
+    }
+  }
+
+  // Add a consolidated render method
+  renderAllCharts() {
+    if (!this.chart) return;
+
+    // 볼륨 차트 업데이트 전에 X축 동기화 - 이 부분이 누락되었음
+    if (this.volumeChart && this.chart.scales && this.chart.scales.x) {
+      // 캔들 차트의 X축 범위를 볼륨 차트와 동기화
+      this.volumeChart.options.scales.x.min = this.chart.scales.x.min;
+      this.volumeChart.options.scales.x.max = this.chart.scales.x.max;
+
+      // Y축 볼륨 스케일도 함께 조정 (볼륨이 잘 보이도록)
+      this.adjustVolumeChartYScale(
+        this.chart.scales.x.min,
+        this.chart.scales.x.max
+      );
+    }
+
+    // Update main chart (without animation)
+    this.chart.update("none");
+
+    // Update volume chart if it exists
+    if (
+      this.volumeChart &&
+      this.volumeChart.ctx &&
+      this.volumeChart.ctx.canvas &&
+      this.volumeChart.ctx.canvas.parentNode
+    ) {
+      this.volumeChart.update("none");
+    }
+
+    // Update overlay canvas
+    this.updateOverlayCanvas();
+
+    // Reset update flag
+    this.chartNeedsUpdate = false;
+  }
+
+  // Modify the zoomChartImmediate to use the new batched rendering
+  zoomChart(x, y, scale, direction = "x") {
     if (
       !this.chart ||
       !this.chart.scales ||
@@ -489,7 +547,7 @@ export class ChartTest {
       const xScale = this.chart.scales.x;
       const yScale = this.chart.scales.y;
 
-      // 스케일 범위 계산
+      // Calculate new scale ranges
       if (direction === "x" || direction === "xy") {
         const rangeWidth = xScale.max - xScale.min;
         const centerValue = xScale.getValueForPixel(x);
@@ -520,7 +578,7 @@ export class ChartTest {
         yScale.options.max = newMax;
       }
 
-      // 즉시 차트 업데이트 실행
+      // Ensure font settings are set (moved from zoomChartImmediate)
       if (!this.chart.options.scales.x.ticks) {
         this.chart.options.scales.x.ticks = {};
       }
@@ -531,20 +589,7 @@ export class ChartTest {
         };
       }
 
-      this.chart.update("none");
-
-      // 볼륨 차트 업데이트 추가
-      if (this.volumeChart) {
-        this.updateVolumeChart();
-      }
-
-      // 오버레이 즉시 업데이트
-      this.updateOverlayCanvas();
-
-      // 업데이트 플래그도 설정 (다른 시스템과의 호환성 유지)
-      this.chartNeedsUpdate = false;
-
-      // 데이터 범위 확인 (과거 데이터 로딩 필요한지)
+      // Check if we need to load more data
       if (xScale.options.min <= this.earliestX && !this.isLoading) {
         this.debouncedCheckLimitReached();
       }
@@ -553,7 +598,7 @@ export class ChartTest {
     }
   }
 
-  // 차트 패닝 메서드
+  // Update panChart to use the batching system too
   panChart(dx, dy) {
     const scales = this.chart.scales;
     const xScale = scales.x;
@@ -581,6 +626,7 @@ export class ChartTest {
       this.debouncedCheckLimitReached();
     }
 
+    // Just set the flag - don't render immediately
     this.chartNeedsUpdate = true;
   }
 
@@ -997,63 +1043,10 @@ export class ChartTest {
 
     try {
       if (this.chartNeedsUpdate) {
-        this.updateChart();
-        this.updateOverlayCanvas();
-
-        // 볼륨 차트 업데이트 안전 로직 추가
-        if (
-          this.volumeChart &&
-          this.volumeChart.ctx &&
-          this.volumeChart.ctx.canvas &&
-          this.volumeChart.ctx.canvas.parentNode
-        ) {
-          this.updateVolumeChart();
-        }
-
-        if (this.chart.scales.x.min <= this.earliestX && !this.isLoading) {
-          this.debouncedCheckLimitReached();
-        }
-        this.chartNeedsUpdate = false;
+        this.renderAllCharts();
       }
     } catch (err) {
       console.error("차트 업데이트 중 오류 처리됨:", err);
-    }
-  }
-
-  updateChart() {
-    if (!this.chart || !this.chart.scales || !this.chart.scales.x) return;
-
-    try {
-      if (!this._chartScalesCache) {
-        this._chartScalesCache = {};
-      }
-      const xScale = this.chart.scales.x;
-      this._chartScalesCache.xMin = xScale.min;
-      this._chartScalesCache.xMax = xScale.max;
-
-      // 메인 차트의 폰트 설정 확인
-      if (!this.chart.options.scales.x.ticks) {
-        this.chart.options.scales.x.ticks = {};
-      }
-      if (!this.chart.options.scales.x.ticks.font) {
-        this.chart.options.scales.x.ticks.font = {
-          family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
-          size: 12,
-        };
-      }
-      if (!this.chart.options.scales.y.ticks) {
-        this.chart.options.scales.y.ticks = {};
-      }
-      if (!this.chart.options.scales.y.ticks.font) {
-        this.chart.options.scales.y.ticks.font = {
-          family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
-          size: 12,
-        };
-      }
-
-      this.chart.update("none");
-    } catch (err) {
-      console.error("차트 업데이트 실패:", err);
     }
   }
 
@@ -1717,12 +1710,14 @@ export class ChartTest {
   }
 
   subscribeChartUpdate(source = "unknown") {
+    console.log(`차트 업데이트 구독 (소스: ${source})`);
+
+    // 구독 참조 카운트만 증가시키고 실제 구독은 한 번만 유지
     this.chartUpdateRefCount++;
-    console.log(
-      `차트 업데이트 구독 (소스: ${source}), 참조 수: ${this.chartUpdateRefCount}`
-    );
+
     if (!this.isChartUpdateSubscribed) {
-      tickerInstance.subscribe(this.boundUpdateCharts);
+      this.boundUpdateCharts = this.updateCharts.bind(this);
+      tickerInstance.subscribe(this.boundUpdateCharts, "chart-update");
       this.isChartUpdateSubscribed = true;
     }
   }
@@ -1783,5 +1778,147 @@ export class ChartTest {
       // 오류 발생 시 기본값 설정
       this.volumeChart.options.scales.y.suggestedMax = 110;
     }
+  }
+
+  // 차트 상태 변경 함수 (렌더링 없음)
+  updateChartState(x, y, scale, direction) {
+    if (!this.chart || !this.chart.scales) return;
+
+    const xScale = this.chart.scales.x;
+    const yScale = this.chart.scales.y;
+
+    try {
+      // X축 스케일 변경 구현
+      if (direction === "x" || direction === "xy") {
+        const rangeWidth = xScale.max - xScale.min;
+        const centerValue = xScale.getValueForPixel(x);
+        const newRangeWidth = rangeWidth / scale;
+
+        // 새 X축 범위 계산
+        xScale.options.min =
+          centerValue -
+          (newRangeWidth * (centerValue - xScale.min)) / rangeWidth;
+        xScale.options.max =
+          centerValue +
+          (newRangeWidth * (xScale.max - centerValue)) / rangeWidth;
+      }
+
+      // Y축 스케일 변경 구현
+      if (direction === "y" || direction === "xy") {
+        const rangeHeight = yScale.max - yScale.min;
+        const centerValue = yScale.getValueForPixel(y);
+        const newRangeHeight = rangeHeight / scale;
+
+        // 새 Y축 범위 계산
+        yScale.options.min =
+          centerValue -
+          (newRangeHeight * (centerValue - yScale.min)) / rangeHeight;
+        yScale.options.max =
+          centerValue +
+          (newRangeHeight * (yScale.max - centerValue)) / rangeHeight;
+      }
+
+      // 데이터 로딩 체크
+      if (xScale.options.min <= this.earliestX && !this.isLoading) {
+        this.debouncedCheckLimitReached();
+      }
+
+      // 상태 변경 플래그 설정 (렌더링은 별도로 요청)
+      this.chartNeedsUpdate = true;
+    } catch (e) {
+      console.error("차트 상태 업데이트 중 오류:", e);
+    }
+  }
+
+  // 통합된 렌더링 요청 메서드 구현
+  requestUnifiedRender() {
+    // 이미 렌더링이 예약된 경우 중복 요청하지 않음
+    if (this.pendingRenderRequest) return;
+
+    // requestAnimationFrame을 사용하여 다음 프레임에 렌더링 예약
+    this.pendingRenderRequest = requestAnimationFrame(() => {
+      if (this.chartNeedsUpdate) {
+        this._performRender();
+      }
+      this.pendingRenderRequest = null;
+    });
+  }
+
+  // 모니터 주사율 감지 메소드 추가
+  detectRefreshRate() {
+    // Screen Refresh Rate API 지원 확인 (Chrome 98+)
+    if ("screen" in window && "refresh" in window.screen) {
+      // 모던 API 사용
+      window.screen.refresh.addEventListener("change", () => {
+        this.refreshRate = window.screen.refresh.rate || 60;
+        console.log(`모니터 주사율 감지: ${this.refreshRate}Hz`);
+        this.updateRenderThrottleDelay();
+      });
+
+      // 초기값 설정
+      window.screen.refresh
+        .getState()
+        .then((state) => {
+          this.refreshRate = state.rate || 60;
+          console.log(`모니터 주사율 초기값: ${this.refreshRate}Hz`);
+          this.updateRenderThrottleDelay();
+        })
+        .catch(() => {
+          // API 오류 시 requestAnimationFrame 기반 측정 대체
+          this.measureRefreshRateWithRAF();
+        });
+    } else {
+      // 레거시 브라우저를 위한 대체 방법
+      this.measureRefreshRateWithRAF();
+    }
+  }
+
+  // requestAnimationFrame을 사용한 주사율 측정
+  measureRefreshRateWithRAF() {
+    let lastTime = performance.now();
+    let frameCount = 0;
+    const framesToMeasure = 10; // 10프레임 동안 측정
+
+    const measureFrame = (timestamp) => {
+      const now = performance.now();
+      const delta = now - lastTime;
+
+      if (delta > 5) {
+        // 노이즈 필터링
+        this.frameIntervals.push(delta);
+        lastTime = now;
+        frameCount++;
+      }
+
+      if (frameCount < framesToMeasure) {
+        requestAnimationFrame(measureFrame);
+      } else {
+        // 중간값을 사용하여 이상치 영향 감소
+        this.frameIntervals.sort((a, b) => a - b);
+        const medianInterval =
+          this.frameIntervals[Math.floor(this.frameIntervals.length / 2)];
+        this.refreshRate = Math.round(1000 / medianInterval);
+
+        console.log(
+          `측정된 모니터 주사율: ${
+            this.refreshRate
+          }Hz (${medianInterval.toFixed(2)}ms 간격)`
+        );
+        this.updateRenderThrottleDelay();
+
+        // 배열 초기화
+        this.frameIntervals = [];
+      }
+    };
+
+    requestAnimationFrame(measureFrame);
+  }
+
+  // 렌더링 스로틀 딜레이 업데이트
+  updateRenderThrottleDelay() {
+    // 주사율 기반 최적 지연시간 설정
+    // 약간의 여유를 두기 위해 90%로 설정 (안정성 확보)
+    this.renderThrottleDelay = Math.floor((1000 / this.refreshRate) * 0.9);
+    console.log(`렌더링 스로틀 딜레이 업데이트: ${this.renderThrottleDelay}ms`);
   }
 }
