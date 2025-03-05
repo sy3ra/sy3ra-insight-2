@@ -961,6 +961,11 @@ export class ChartTest {
     this.showLoadingSpinner();
 
     try {
+      // 현재 차트 상태 저장 (줌 레벨 유지를 위해)
+      const currentXMin = this.chart.scales.x.min;
+      const currentXMax = this.chart.scales.x.max;
+      const currentRange = currentXMax - currentXMin;
+
       // 추가 데이터 가져오기
       const formattedData = await this.handleFetchMoreData();
 
@@ -976,7 +981,11 @@ export class ChartTest {
 
         // 데이터 경계값 업데이트
         this.earliestX = this.labelsStack[0];
-        this.chart.options.scales.x.min = this.earliestX;
+
+        // 가장 중요한 부분: 현재 보고 있는 뷰포트 유지
+        // 기존 min/max 값 그대로 사용 (시점 변경 없음)
+        this.chart.options.scales.x.min = currentXMin;
+        this.chart.options.scales.x.max = currentXMax;
 
         // 볼륨 차트 데이터도 업데이트
         if (this.volumeChart) {
@@ -990,8 +999,11 @@ export class ChartTest {
           this.volumeChart.data.labels = volumeData.labels;
           this.volumeChart.data.datasets = volumeData.datasets;
 
-          // 볼륨 차트 X축 범위도 업데이트
-          this.volumeChart.options.scales.x.min = this.earliestX;
+          // 볼륨 차트의 X축 범위도 캔들차트와 동일하게 유지
+          this.volumeChart.options.scales.x.min =
+            this.chart.options.scales.x.min;
+          this.volumeChart.options.scales.x.max =
+            this.chart.options.scales.x.max;
         }
 
         // 차트 업데이트
