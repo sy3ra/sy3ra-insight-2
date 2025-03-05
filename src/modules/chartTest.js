@@ -75,10 +75,13 @@ export class ChartTest {
     // 렌더링 최적화를 위한 변수 추가
     this.isRenderPending = false;
     this.lastRenderTimestamp = 0;
-    this.frameIntervals = []; // 프레임 간격 추적용 배열
-    this.refreshRate = 60; // 기본값 (동적으로 갱신됨)
+    this.frameIntervals = []; // 프레임 간격 추적용 배열 복원
+    this.refreshRate = 60; // 기본값 복원
 
-    // 모니터 주사율 감지 메소드 호출
+    // 기본 스로틀 딜레이 설정
+    this.renderThrottleDelay = Math.floor((1000 / this.refreshRate) * 0.9);
+
+    // 모니터 주사율 감지 메소드 호출 복원
     this.detectRefreshRate();
 
     // 객체 풀 초기화
@@ -293,29 +296,22 @@ export class ChartTest {
     let lastMouseX = 0;
     let lastMouseY = 0;
     let lastWheelTime = 0;
-    let lastWheelFrameId = 0;
-    let lastMouseDownFrameId = 0;
-    let lastMouseLeaveFrameId = 0;
-    let currentFrame = 0;
 
-    // 프레임 ID 업데이트 함수
-    const updateFrameId = () => {
-      currentFrame++;
-      requestAnimationFrame(updateFrameId);
-    };
-
-    // 프레임 ID 업데이트 시작
-    updateFrameId();
+    // 프레임 카운터 관련 변수 제거
+    // let lastWheelFrameId = 0;
+    // let lastMouseDownFrameId = 0;
+    // let lastMouseLeaveFrameId = 0;
+    // let currentFrame = 0;
 
     // 휠 이벤트 처리 함수 수정
     const handleWheel = (e) => {
       e.preventDefault();
 
-      // 동일 프레임 중복 방지 로직
-      if (lastWheelFrameId === currentFrame) {
-        this.accumulatedDeltaY = (this.accumulatedDeltaY || 0) + e.deltaY;
-        return;
-      }
+      // 동일 프레임 중복 방지 로직 단순화
+      // if (lastWheelFrameId === currentFrame) {
+      //   this.accumulatedDeltaY = (this.accumulatedDeltaY || 0) + e.deltaY;
+      //   return;
+      // }
 
       // 시간 제한 (throttling)
       const now = Date.now();
@@ -325,7 +321,7 @@ export class ChartTest {
       }
 
       lastWheelTime = now;
-      lastWheelFrameId = currentFrame;
+      // lastWheelFrameId = currentFrame; // 제거
 
       // 이벤트 처리 로직
       const eventInfo = this.eventInfoPool.get();
@@ -358,7 +354,7 @@ export class ChartTest {
       this.updateChartState(eventInfo.x, eventInfo.y, delta, direction);
 
       // 통합된 렌더링 요청 메커니즘 사용
-      this.requestUnifiedRender();
+      // this.requestUnifiedRender(); // 렌더링은 ticker가 처리하도록 변경
 
       // 객체 풀에 반환
       this.eventInfoPool.release(eventInfo);
@@ -381,16 +377,16 @@ export class ChartTest {
       }, 10);
     };
 
-    // 마우스 다운 이벤트 핸들러 - 객체 풀링 적용
+    // 마우스 다운 이벤트 핸들러 - 프레임 카운터 참조 제거
     const handleMouseDown = (e) => {
       // 오른쪽 마우스 클릭 무시
       if (e.button === 2) return;
 
-      if (lastMouseDownFrameId === currentFrame) {
-        e.preventDefault();
-        return;
-      }
-      lastMouseDownFrameId = currentFrame;
+      // if (lastMouseDownFrameId === currentFrame) {
+      //   e.preventDefault();
+      //   return;
+      // }
+      // lastMouseDownFrameId = currentFrame;
 
       // 객체 풀에서 이벤트 정보 객체 재사용
       const eventInfo = this.eventInfoPool.get();
@@ -433,10 +429,8 @@ export class ChartTest {
       eventInfo.deltaY = eventInfo.y - lastMouseY;
       eventInfo.type = "mousemove";
 
-      // 배치 업데이트를 위해 queueChartUpdate 사용
-      this.queueChartUpdate(() => {
-        this.panChart(eventInfo.deltaX, eventInfo.deltaY);
-      });
+      // 직접 panChart 호출
+      this.panChart(eventInfo.deltaX, eventInfo.deltaY);
 
       lastMouseX = eventInfo.x;
       lastMouseY = eventInfo.y;
@@ -452,12 +446,12 @@ export class ChartTest {
       }
     };
 
-    // mouseleave 이벤트 핸들러
+    // mouseleave 이벤트 핸들러 - 프레임 카운터 참조 제거
     const handleMouseLeave = (e) => {
-      if (lastMouseLeaveFrameId === currentFrame) {
-        return;
-      }
-      lastMouseLeaveFrameId = currentFrame;
+      // if (lastMouseLeaveFrameId === currentFrame) {
+      //   return;
+      // }
+      // lastMouseLeaveFrameId = currentFrame;
 
       console.log("mouseleave 이벤트 발생");
       this.unsubscribeChartUpdate("mouse-leave");
@@ -469,44 +463,37 @@ export class ChartTest {
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
     canvas.addEventListener("mouseleave", handleMouseLeave);
-
-    // 터치 이벤트 리스너는 필요에 따라 추가
-    /*
-    canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
-    canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
-    canvas.addEventListener("touchend", handleTouchEnd);
-    canvas.addEventListener("touchcancel", handleTouchEnd);
-    */
   }
 
-  // Add this new method to batch render operations
+  // queueChartUpdate 메서드 수정 - 직접 렌더링하지 않고 상태만 업데이트
   queueChartUpdate(updateFn) {
-    // Execute the update function to prepare changes
+    // 업데이트 함수 실행
     updateFn();
 
-    // Set flag for pending update
+    // 업데이트 플래그 설정
     this.chartNeedsUpdate = true;
 
-    // Use requestAnimationFrame to batch all updates into a single render cycle
-    if (!this.pendingRenderRequest) {
-      this.pendingRenderRequest = requestAnimationFrame(() => {
-        this.renderAllCharts();
-        this.pendingRenderRequest = null;
-      });
+    // requestAnimationFrame 호출 제거하고 대신 구독 시스템 사용
+    if (!this.isChartUpdateSubscribed) {
+      this.subscribeChartUpdate("chart-render");
     }
   }
 
-  // Add a consolidated render method
+  // renderAllCharts 메서드에 로깅 추가
   renderAllCharts() {
     if (!this.chart) return;
 
-    // 볼륨 차트 업데이트 전에 X축 동기화 - 이 부분이 누락되었음
+    // 디버깅용 렌더링 타임스탬프 기록
+    const now = performance.now();
+    const timeSinceLastRender = now - this.lastRenderTimestamp;
+
+    // 볼륨 차트 업데이트 전에 X축 동기화
     if (this.volumeChart && this.chart.scales && this.chart.scales.x) {
       // 캔들 차트의 X축 범위를 볼륨 차트와 동기화
       this.volumeChart.options.scales.x.min = this.chart.scales.x.min;
       this.volumeChart.options.scales.x.max = this.chart.scales.x.max;
 
-      // Y축 볼륨 스케일도 함께 조정 (볼륨이 잘 보이도록)
+      // Y축 볼륨 스케일도 함께 조정
       this.adjustVolumeChartYScale(
         this.chart.scales.x.min,
         this.chart.scales.x.max
@@ -531,74 +518,49 @@ export class ChartTest {
 
     // Reset update flag
     this.chartNeedsUpdate = false;
+
+    // 렌더링 타임스탬프 갱신
+    this.lastRenderTimestamp = now;
   }
 
-  // Modify the zoomChartImmediate to use the new batched rendering
-  zoomChart(x, y, scale, direction = "x") {
-    if (
-      !this.chart ||
-      !this.chart.scales ||
-      !this.chart.scales.x ||
-      !this.chart.scales.y
-    )
-      return;
+  // subscribeChartUpdate 메서드 수정 - 모든 차트 업데이트를 동일 eventType으로 통합
+  subscribeChartUpdate(source = "unknown") {
+    console.log(`차트 업데이트 구독 (소스: ${source})`);
 
-    try {
-      const xScale = this.chart.scales.x;
-      const yScale = this.chart.scales.y;
+    // 구독 참조 카운트만 증가시키고 실제 구독은 한 번만 유지
+    this.chartUpdateRefCount++;
 
-      // Calculate new scale ranges
-      if (direction === "x" || direction === "xy") {
-        const rangeWidth = xScale.max - xScale.min;
-        const centerValue = xScale.getValueForPixel(x);
-        const newRangeWidth = rangeWidth / scale;
-        const newMin =
-          centerValue -
-          (newRangeWidth * (centerValue - xScale.min)) / rangeWidth;
-        const newMax =
-          centerValue +
-          (newRangeWidth * (xScale.max - centerValue)) / rangeWidth;
-
-        xScale.options.min = newMin;
-        xScale.options.max = newMax;
-      }
-
-      if (direction === "y" || direction === "xy") {
-        const rangeHeight = yScale.max - yScale.min;
-        const centerValue = yScale.getValueForPixel(y);
-        const newRangeHeight = rangeHeight / scale;
-        const newMin =
-          centerValue -
-          (newRangeHeight * (centerValue - yScale.min)) / rangeHeight;
-        const newMax =
-          centerValue +
-          (newRangeHeight * (yScale.max - centerValue)) / rangeHeight;
-
-        yScale.options.min = newMin;
-        yScale.options.max = newMax;
-      }
-
-      // Ensure font settings are set (moved from zoomChartImmediate)
-      if (!this.chart.options.scales.x.ticks) {
-        this.chart.options.scales.x.ticks = {};
-      }
-      if (!this.chart.options.scales.x.ticks.font) {
-        this.chart.options.scales.x.ticks.font = {
-          family: "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
-          size: 12,
-        };
-      }
-
-      // Check if we need to load more data
-      if (xScale.options.min <= this.earliestX && !this.isLoading) {
-        this.debouncedCheckLimitReached();
-      }
-    } catch (e) {
-      console.error("줌 처리 중 오류:", e);
+    if (!this.isChartUpdateSubscribed) {
+      this.boundUpdateCharts = this.updateCharts.bind(this);
+      // 동일한 이벤트 타입으로 모든 차트 업데이트 구독
+      tickerInstance.subscribe(this.boundUpdateCharts, "chart-render");
+      this.isChartUpdateSubscribed = true;
     }
   }
 
-  // Update panChart to use the batching system too
+  // updateCharts 메서드 수정
+  updateCharts(timestamp) {
+    if (!this.chart) return;
+
+    try {
+      if (this.chartNeedsUpdate) {
+        // 렌더링 성능 최적화를 위한 스로틀링 로직
+        const timeSinceLastRender = timestamp - this.lastRenderTimestamp;
+
+        // 특정 시간 간격보다 크면 렌더링 수행 (주사율 기반)
+        if (
+          timeSinceLastRender >= this.renderThrottleDelay ||
+          timeSinceLastRender > 100
+        ) {
+          this.renderAllCharts();
+        }
+      }
+    } catch (err) {
+      console.error("차트 업데이트 중 오류 처리됨:", err);
+    }
+  }
+
+  // 패닝 함수 수정
   panChart(dx, dy) {
     const scales = this.chart.scales;
     const xScale = scales.x;
@@ -626,7 +588,7 @@ export class ChartTest {
       this.debouncedCheckLimitReached();
     }
 
-    // Just set the flag - don't render immediately
+    // 차트 상태 업데이트 플래그 설정
     this.chartNeedsUpdate = true;
   }
 
@@ -1050,453 +1012,6 @@ export class ChartTest {
     }
   }
 
-  updateCharts(timestamp) {
-    if (!this.chart) return;
-
-    try {
-      if (this.chartNeedsUpdate) {
-        this.renderAllCharts();
-      }
-    } catch (err) {
-      console.error("차트 업데이트 중 오류 처리됨:", err);
-    }
-  }
-
-  showLoadingSpinner() {
-    if (!this.spinner) {
-      this.createSpinner();
-    }
-    this.spinner.style.display = "block";
-  }
-
-  createSpinner() {
-    this.spinner = document.createElement("div");
-    this.setupSpinnerStyles();
-    this.createSpinnerKeyframes();
-    this.chartCtx.canvas.parentElement.appendChild(this.spinner);
-  }
-
-  createSpinnerKeyframes() {
-    if (!document.getElementById("spinner-keyframes")) {
-      const style = document.createElement("style");
-      style.id = "spinner-keyframes";
-      style.innerHTML = `
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }`;
-      document.head.appendChild(style);
-    }
-  }
-
-  setupSpinnerStyles() {
-    const styles = {
-      position: "absolute",
-      left: "20px",
-      top: "50%",
-      transform: "translateY(-50%)",
-      width: "40px",
-      height: "40px",
-      border: "4px solid rgba(255, 255, 255, 0.3)",
-      borderTop: "4px solid #fff",
-      borderRadius: "50%",
-      animation: "spin 1s linear infinite",
-    };
-    Object.assign(this.spinner.style, styles);
-  }
-
-  hideLoadingSpinner() {
-    if (this.spinner) {
-      this.spinner.style.display = "none";
-    }
-  }
-
-  _drawOverlays(overlays, fullClear = false) {
-    if (!this.isValidOverlaysArray(overlays)) return;
-    this.clearOverlayCanvas(fullClear);
-    overlays.forEach((overlay) => {
-      if (!overlay) return;
-      this.drawOverlayByType(overlay);
-    });
-  }
-
-  isValidOverlaysArray(overlays) {
-    return overlays && Array.isArray(overlays) && overlays.length > 0;
-  }
-
-  clearOverlayCanvas(fullClear) {
-    const width = fullClear
-      ? this.overlayCtx.canvas.width
-      : this.overlayCtx.canvas.width / 2;
-    const height = fullClear
-      ? this.overlayCtx.canvas.height
-      : this.overlayCtx.canvas.height / 2;
-    this.overlayCtx.clearRect(0, 0, width, height);
-  }
-
-  drawOverlayByType(overlay) {
-    const { startX, startY, endX, endY, lineType } = overlay;
-    const chartArea = this.chart.chartArea;
-
-    switch (lineType) {
-      case "HorizontalLine":
-        this.drawHorizontalLine(startY, chartArea);
-        break;
-      case "VerticalLine":
-        this.drawVerticalLine(startX, chartArea);
-        break;
-      case "ExtendedLine":
-        this.drawExtendedLine(startX, startY, endX, endY, chartArea);
-        break;
-      case "Ray":
-        this.drawRay(startX, startY, endX, endY, chartArea);
-        break;
-      default:
-        this.drawSimpleLine(startX, startY, endX, endY, chartArea);
-        break;
-    }
-  }
-
-  drawHorizontalLine(yValue, chartArea) {
-    const yPixel = this.chart.scales.y.getPixelForValue(yValue);
-    drawLine(
-      this.overlayCtx,
-      chartArea.left,
-      yPixel,
-      chartArea.right,
-      yPixel,
-      "red",
-      1,
-      chartArea
-    );
-  }
-
-  drawVerticalLine(xValue, chartArea) {
-    const xPixel = this.chart.scales.x.getPixelForValue(xValue);
-    drawLine(
-      this.overlayCtx,
-      xPixel,
-      chartArea.top,
-      xPixel,
-      chartArea.bottom,
-      "red",
-      1,
-      chartArea
-    );
-  }
-
-  drawExtendedLine(startX, startY, endX, endY, chartArea) {
-    // 객체 풀에서 좌표 객체 가져오기
-    const startPoint = this.pointPool.get();
-    const endPoint = this.pointPool.get();
-
-    startPoint.x = this.chart.scales.x.getPixelForValue(startX);
-    startPoint.y = this.chart.scales.y.getValueForPixel(startY);
-    endPoint.x = this.chart.scales.x.getPixelForValue(endX);
-    endPoint.y = this.chart.scales.y.getValueForPixel(endY);
-
-    const slope = calculateSlope(
-      startPoint.x,
-      startPoint.y,
-      endPoint.x,
-      endPoint.y
-    );
-
-    // 라인 파라미터 객체 풀에서 가져오기
-    const lineParams = this.lineParamPool.get();
-
-    if (slope === Infinity || slope === -Infinity) {
-      lineParams.startX = startPoint.x;
-      lineParams.startY = chartArea.top;
-      lineParams.endX = startPoint.x;
-      lineParams.endY = chartArea.bottom;
-    } else if (slope === 0) {
-      lineParams.startX = chartArea.left;
-      lineParams.startY = startPoint.y;
-      lineParams.endX = chartArea.right;
-      lineParams.endY = startPoint.y;
-    } else {
-      const yAtLeft = startPoint.y - slope * (startPoint.x - chartArea.left);
-      const yAtRight = startPoint.y + slope * (chartArea.right - startPoint.x);
-
-      const xAtTop = startPoint.x + (chartArea.top - startPoint.y) / slope;
-      const xAtBottom =
-        startPoint.x + (chartArea.bottom - startPoint.y) / slope;
-
-      if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
-        lineParams.startX = chartArea.left;
-        lineParams.startY = yAtLeft;
-      } else if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
-        lineParams.startX = xAtTop;
-        lineParams.startY = chartArea.top;
-      } else {
-        lineParams.startX = chartArea.left;
-        lineParams.startY = yAtLeft;
-      }
-
-      if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
-        lineParams.endX = chartArea.right;
-        lineParams.endY = yAtRight;
-      } else if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
-        lineParams.endX = xAtBottom;
-        lineParams.endY = chartArea.bottom;
-      } else {
-        lineParams.endX = chartArea.right;
-        lineParams.endY = yAtRight;
-      }
-    }
-
-    lineParams.color = "red";
-    lineParams.width = 1;
-
-    drawLine(
-      this.overlayCtx,
-      lineParams.startX,
-      lineParams.startY,
-      lineParams.endX,
-      lineParams.endY,
-      lineParams.color,
-      lineParams.width,
-      chartArea
-    );
-
-    // 사용 완료 후 객체 풀에 반환
-    this.lineParamPool.release(lineParams);
-    this.pointPool.release(startPoint);
-    this.pointPool.release(endPoint);
-  }
-
-  drawRay(startX, startY, endX, endY, chartArea) {
-    // 객체 풀에서 좌표 객체 가져오기
-    const startPoint = this.pointPool.get();
-    const endPoint = this.pointPool.get();
-
-    startPoint.x = this.chart.scales.x.getPixelForValue(startX);
-    startPoint.y = this.chart.scales.y.getValueForPixel(startY);
-    endPoint.x = this.chart.scales.x.getPixelForValue(endX);
-    endPoint.y = this.chart.scales.y.getValueForPixel(endY);
-
-    const slope = calculateSlope(
-      startPoint.x,
-      startPoint.y,
-      endPoint.x,
-      endPoint.y
-    );
-
-    const direction = calculateDirection(
-      startPoint.x,
-      startPoint.y,
-      endPoint.x,
-      endPoint.y
-    );
-
-    // 라인 파라미터 객체 풀에서 가져오기
-    const lineParams = this.lineParamPool.get();
-    lineParams.startX = startPoint.x;
-    lineParams.startY = startPoint.y;
-
-    if (slope === Infinity || slope === -Infinity) {
-      lineParams.endX = startPoint.x;
-      lineParams.endY = direction.y > 0 ? chartArea.bottom : chartArea.top;
-    } else if (slope === 0) {
-      lineParams.endX = direction.x > 0 ? chartArea.right : chartArea.left;
-      lineParams.endY = startPoint.y;
-    } else {
-      // 교차점을 찾는 로직
-      let minDistance = Number.MAX_VALUE;
-      let bestX = endPoint.x;
-      let bestY = endPoint.y;
-
-      // 오른쪽 경계와의 교차점 확인
-      const yAtRight = startPoint.y + slope * (chartArea.right - startPoint.x);
-      if (yAtRight >= chartArea.top && yAtRight <= chartArea.bottom) {
-        const distRight =
-          Math.pow(chartArea.right - startPoint.x, 2) +
-          Math.pow(yAtRight - startPoint.y, 2);
-        const dirMatchX = direction.x > 0;
-        const dirMatchY = yAtRight > startPoint.y === direction.y > 0;
-
-        if (
-          (dirMatchX || direction.x === 0) &&
-          (dirMatchY || direction.y === 0) &&
-          distRight < minDistance
-        ) {
-          minDistance = distRight;
-          bestX = chartArea.right;
-          bestY = yAtRight;
-        }
-      }
-
-      // 왼쪽 경계와의 교차점 확인
-      const yAtLeft = startPoint.y + slope * (chartArea.left - startPoint.x);
-      if (yAtLeft >= chartArea.top && yAtLeft <= chartArea.bottom) {
-        const distLeft =
-          Math.pow(chartArea.left - startPoint.x, 2) +
-          Math.pow(yAtLeft - startPoint.y, 2);
-        const dirMatchX = direction.x < 0;
-        const dirMatchY = yAtLeft > startPoint.y === direction.y > 0;
-
-        if (
-          (dirMatchX || direction.x === 0) &&
-          (dirMatchY || direction.y === 0) &&
-          distLeft < minDistance
-        ) {
-          minDistance = distLeft;
-          bestX = chartArea.left;
-          bestY = yAtLeft;
-        }
-      }
-
-      // 상단 경계와의 교차점 확인
-      const xAtTop = startPoint.x + (chartArea.top - startPoint.y) / slope;
-      if (xAtTop >= chartArea.left && xAtTop <= chartArea.right) {
-        const distTop =
-          Math.pow(xAtTop - startPoint.x, 2) +
-          Math.pow(chartArea.top - startPoint.y, 2);
-        const dirMatchX = xAtTop > startPoint.x === direction.x > 0;
-        const dirMatchY = direction.y < 0;
-
-        if (
-          (dirMatchX || direction.x === 0) &&
-          (dirMatchY || direction.y === 0) &&
-          distTop < minDistance
-        ) {
-          minDistance = distTop;
-          bestX = xAtTop;
-          bestY = chartArea.top;
-        }
-      }
-
-      // 하단 경계와의 교차점 확인
-      const xAtBottom =
-        startPoint.x + (chartArea.bottom - startPoint.y) / slope;
-      if (xAtBottom >= chartArea.left && xAtBottom <= chartArea.right) {
-        const distBottom =
-          Math.pow(xAtBottom - startPoint.x, 2) +
-          Math.pow(chartArea.bottom - startPoint.y, 2);
-        const dirMatchX = xAtBottom > startPoint.x === direction.x > 0;
-        const dirMatchY = direction.y > 0;
-
-        if (
-          (dirMatchX || direction.x === 0) &&
-          (dirMatchY || direction.y === 0) &&
-          distBottom < minDistance
-        ) {
-          minDistance = distBottom;
-          bestX = xAtBottom;
-          bestY = chartArea.bottom;
-        }
-      }
-
-      lineParams.endX = bestX;
-      lineParams.endY = bestY;
-    }
-
-    lineParams.color = "red";
-    lineParams.width = 1;
-
-    drawLine(
-      this.overlayCtx,
-      lineParams.startX,
-      lineParams.startY,
-      lineParams.endX,
-      lineParams.endY,
-      lineParams.color,
-      lineParams.width,
-      chartArea
-    );
-
-    // 사용 완료 후 객체 풀에 반환
-    this.lineParamPool.release(lineParams);
-    this.pointPool.release(startPoint);
-    this.pointPool.release(endPoint);
-  }
-
-  // 객체 풀링을 적용하여 단순 라인 그리기 메서드 최적화
-  drawSimpleLine(startX, startY, endX, endY, chartArea) {
-    // 라인 파라미터 객체 풀에서 가져오기
-    const lineParams = this.lineParamPool.get();
-
-    lineParams.startX = this.chart.scales.x.getPixelForValue(startX);
-    lineParams.startY = this.chart.scales.y.getPixelForValue(startY);
-    lineParams.endX = this.chart.scales.x.getPixelForValue(endX);
-    lineParams.endY = this.chart.scales.y.getPixelForValue(endY);
-    lineParams.color = "red";
-    lineParams.width = 1;
-
-    drawLine(
-      this.overlayCtx,
-      lineParams.startX,
-      lineParams.startY,
-      lineParams.endX,
-      lineParams.endY,
-      lineParams.color,
-      lineParams.width,
-      chartArea
-    );
-
-    // 사용 완료 후 객체 풀에 반환
-    this.lineParamPool.release(lineParams);
-  }
-
-  // 객체 풀링을 적용하여 수평선 그리기 메서드 최적화
-  drawHorizontalLine(yValue, chartArea) {
-    const yPixel = this.chart.scales.y.getPixelForValue(yValue);
-
-    // 라인 파라미터 객체 풀에서 가져오기
-    const lineParams = this.lineParamPool.get();
-
-    lineParams.startX = chartArea.left;
-    lineParams.startY = yPixel;
-    lineParams.endX = chartArea.right;
-    lineParams.endY = yPixel;
-    lineParams.color = "red";
-    lineParams.width = 1;
-
-    drawLine(
-      this.overlayCtx,
-      lineParams.startX,
-      lineParams.startY,
-      lineParams.endX,
-      lineParams.endY,
-      lineParams.color,
-      lineParams.width,
-      chartArea
-    );
-
-    // 사용 완료 후 객체 풀에 반환
-    this.lineParamPool.release(lineParams);
-  }
-
-  // 객체 풀링을 적용하여 수직선 그리기 메서드 최적화
-  drawVerticalLine(xValue, chartArea) {
-    const xPixel = this.chart.scales.x.getPixelForValue(xValue);
-
-    // 라인 파라미터 객체 풀에서 가져오기
-    const lineParams = this.lineParamPool.get();
-
-    lineParams.startX = xPixel;
-    lineParams.startY = chartArea.top;
-    lineParams.endX = xPixel;
-    lineParams.endY = chartArea.bottom;
-    lineParams.color = "red";
-    lineParams.width = 1;
-
-    drawLine(
-      this.overlayCtx,
-      lineParams.startX,
-      lineParams.startY,
-      lineParams.endX,
-      lineParams.endY,
-      lineParams.color,
-      lineParams.width,
-      chartArea
-    );
-
-    // 사용 완료 후 객체 풀에 반환
-    this.lineParamPool.release(lineParams);
-  }
-
   updateOverlayCanvas() {
     const overlays = window.mainCanvas?.getOverlaysArray();
     this._drawOverlays(overlays, true);
@@ -1721,19 +1236,6 @@ export class ChartTest {
     }, 1000);
   }
 
-  subscribeChartUpdate(source = "unknown") {
-    console.log(`차트 업데이트 구독 (소스: ${source})`);
-
-    // 구독 참조 카운트만 증가시키고 실제 구독은 한 번만 유지
-    this.chartUpdateRefCount++;
-
-    if (!this.isChartUpdateSubscribed) {
-      this.boundUpdateCharts = this.updateCharts.bind(this);
-      tickerInstance.subscribe(this.boundUpdateCharts, "chart-update");
-      this.isChartUpdateSubscribed = true;
-    }
-  }
-
   unsubscribeChartUpdate(source = "unknown") {
     console.log(`차트 업데이트 구독 해제 시도 (소스: ${source})`);
     if (source === "mouse-leave") {
@@ -1844,19 +1346,117 @@ export class ChartTest {
 
   // 통합된 렌더링 요청 메서드 구현
   requestUnifiedRender() {
-    // 이미 렌더링이 예약된 경우 중복 요청하지 않음
-    if (this.pendingRenderRequest) return;
+    // 플래그만 설정하고 ticker가 처리하도록 함
+    this.chartNeedsUpdate = true;
 
-    // requestAnimationFrame을 사용하여 다음 프레임에 렌더링 예약
-    this.pendingRenderRequest = requestAnimationFrame(() => {
-      if (this.chartNeedsUpdate) {
-        this._performRender();
-      }
-      this.pendingRenderRequest = null;
+    // ticker가 이미 구독되어 있지 않다면 구독
+    if (!this.isChartUpdateSubscribed) {
+      this.subscribeChartUpdate("chart-render");
+    }
+  }
+
+  // _drawOverlays 메서드 추가 - 이 메서드가 누락되어 오류 발생
+  _drawOverlays(overlays, fullClear = false) {
+    if (!this.isValidOverlaysArray(overlays)) return;
+    this.clearOverlayCanvas(fullClear);
+    overlays.forEach((overlay) => {
+      if (!overlay) return;
+      this.drawOverlayByType(overlay);
     });
   }
 
-  // 모니터 주사율 감지 메소드 추가
+  isValidOverlaysArray(overlays) {
+    return overlays && Array.isArray(overlays) && overlays.length > 0;
+  }
+
+  clearOverlayCanvas(fullClear) {
+    const width = fullClear
+      ? this.overlayCtx.canvas.width
+      : this.overlayCtx.canvas.width / 2;
+    const height = fullClear
+      ? this.overlayCtx.canvas.height
+      : this.overlayCtx.canvas.height / 2;
+    this.overlayCtx.clearRect(0, 0, width, height);
+  }
+
+  drawOverlayByType(overlay) {
+    const { startX, startY, endX, endY, lineType } = overlay;
+    const chartArea = this.chart.chartArea;
+
+    switch (lineType) {
+      case "HorizontalLine":
+        this.drawHorizontalLine(startY, chartArea);
+        break;
+      case "VerticalLine":
+        this.drawVerticalLine(startX, chartArea);
+        break;
+      case "ExtendedLine":
+        this.drawExtendedLine(startX, startY, endX, endY, chartArea);
+        break;
+      case "Ray":
+        this.drawRay(startX, startY, endX, endY, chartArea);
+        break;
+      default:
+        this.drawSimpleLine(startX, startY, endX, endY, chartArea);
+        break;
+    }
+  }
+
+  // 로딩 스피너 표시 메서드
+  showLoadingSpinner() {
+    if (!this.spinner) {
+      this.createSpinner();
+    }
+    this.spinner.style.display = "block";
+  }
+
+  // 로딩 스피너 생성 메서드
+  createSpinner() {
+    this.spinner = document.createElement("div");
+    this.setupSpinnerStyles();
+    this.createSpinnerKeyframes();
+    this.chartCtx.canvas.parentElement.appendChild(this.spinner);
+  }
+
+  // 스피너 애니메이션 키프레임 생성
+  createSpinnerKeyframes() {
+    if (!document.getElementById("spinner-keyframes")) {
+      const style = document.createElement("style");
+      style.id = "spinner-keyframes";
+      style.innerHTML = `
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }`;
+      document.head.appendChild(style);
+    }
+  }
+
+  // 스피너 스타일 설정
+  setupSpinnerStyles() {
+    const styles = {
+      position: "absolute",
+      left: "20px",
+      top: "50%",
+      transform: "translateY(-50%)",
+      width: "40px",
+      height: "40px",
+      border: "4px solid rgba(255, 255, 255, 0.3)",
+      borderTop: "4px solid #fff",
+      borderRadius: "50%",
+      animation: "spin 1s linear infinite",
+    };
+    Object.assign(this.spinner.style, styles);
+  }
+
+  // 로딩 스피너 숨기기
+  hideLoadingSpinner() {
+    if (this.spinner) {
+      this.spinner.style.display = "none";
+    }
+  }
+
+  // 모니터 주사율 감지 메소드 복원
   detectRefreshRate() {
     // Screen Refresh Rate API 지원 확인 (Chrome 98+)
     if ("screen" in window && "refresh" in window.screen) {
@@ -1885,7 +1485,7 @@ export class ChartTest {
     }
   }
 
-  // requestAnimationFrame을 사용한 주사율 측정
+  // requestAnimationFrame을 사용한 주사율 측정 복원
   measureRefreshRateWithRAF() {
     let lastTime = performance.now();
     let frameCount = 0;
@@ -1926,7 +1526,7 @@ export class ChartTest {
     requestAnimationFrame(measureFrame);
   }
 
-  // 렌더링 스로틀 딜레이 업데이트
+  // 렌더링 스로틀 딜레이 업데이트 복원
   updateRenderThrottleDelay() {
     // 주사율 기반 최적 지연시간 설정
     // 약간의 여유를 두기 위해 90%로 설정 (안정성 확보)
