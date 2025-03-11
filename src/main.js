@@ -19,7 +19,6 @@ class MainCanvas {
     // 필요한 모든 캔버스 생성
     this.canvasElements = {
       chart: this.createCanvas("chartCanvas"),
-      volumeChart: this.createCanvas("volumeChartCanvas"),
       crosshair: this.createCanvas("crosshairCanvas"),
       overlay: this.createCanvas("overlayCanvas"),
       drawing: this.createCanvas("drawingCanvas"),
@@ -28,7 +27,6 @@ class MainCanvas {
     // 컨텍스트 초기화
     this.contexts = {
       chart: this.canvasElements.chart.getContext("2d"),
-      volumeChart: this.canvasElements.volumeChart.getContext("2d"),
       crosshair: this.canvasElements.crosshair.getContext("2d"),
       overlay: this.canvasElements.overlay.getContext("2d"),
       drawing: this.canvasElements.drawing.getContext("2d"),
@@ -37,8 +35,6 @@ class MainCanvas {
     // 기존 코드와의 호환성을 위해 별도 변수로도 할당
     this.chartCanvas = this.canvasElements.chart;
     this.chartCtx = this.contexts.chart;
-    this.volumeChartCanvas = this.canvasElements.volumeChart;
-    this.volumeChartCtx = this.contexts.volumeChart;
     this.crosshairCanvas = this.canvasElements.crosshair;
     this.crosshairCtx = this.contexts.crosshair;
     this.overlayCanvas = this.canvasElements.overlay;
@@ -75,7 +71,7 @@ class MainCanvas {
       this.chartCtx,
       this.contexts.crosshair,
       this.contexts.overlay,
-      this.contexts.volumeChart
+      null
     );
 
     // 드로잉 인스턴스 생성

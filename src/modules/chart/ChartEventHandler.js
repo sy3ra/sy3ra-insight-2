@@ -3,7 +3,6 @@ import { tickerInstance } from "../ticker.js";
 export class ChartEventHandler {
   constructor(chart, volumeChart, chartInstance) {
     this.chart = chart;
-    this.volumeChart = volumeChart;
     this.chartInstance = chartInstance;
 
     // 상태 변수
@@ -21,17 +20,26 @@ export class ChartEventHandler {
     // 구독 상태 관리
     this.isChartUpdateSubscribed = false;
     this.chartUpdateRefCount = 0;
+
+    // 메서드 바인딩
+    this.handleWheel = this.handleWheel.bind(this);
+    this.handleMouseDown = this.handleMouseDown.bind(this);
+    this.handleMouseMove = this.handleMouseMove.bind(this);
+    this.handleMouseUp = this.handleMouseUp.bind(this);
+    this.handleMouseLeave = this.handleMouseLeave.bind(this);
   }
 
   setupEventHandlers(canvas) {
-    // 이벤트 리스너 등록
-    canvas.addEventListener("wheel", this.handleWheel.bind(this), {
-      passive: false,
-    });
-    canvas.addEventListener("mousedown", this.handleMouseDown.bind(this));
-    document.addEventListener("mousemove", this.handleMouseMove.bind(this));
-    document.addEventListener("mouseup", this.handleMouseUp.bind(this));
-    canvas.addEventListener("mouseleave", this.handleMouseLeave.bind(this));
+    if (!canvas) return;
+
+    // 이벤트 리스너 추가
+    canvas.addEventListener("wheel", this.handleWheel, { passive: false });
+    canvas.addEventListener("mousedown", this.handleMouseDown);
+    canvas.addEventListener("mousemove", this.handleMouseMove);
+    canvas.addEventListener("mouseup", this.handleMouseUp);
+    canvas.addEventListener("mouseleave", this.handleMouseLeave);
+
+    console.log("차트 이벤트 핸들러가 설정되었습니다.");
   }
 
   handleWheel(e) {
@@ -97,35 +105,60 @@ export class ChartEventHandler {
     // 오른쪽 마우스 클릭 무시
     if (e.button === 2) return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    this.lastMouseX = e.clientX - rect.left;
-    this.lastMouseY = e.clientY - rect.top;
+    try {
+      if (!e.currentTarget) {
+        console.warn("currentTarget is null in handleMouseDown");
+        return;
+      }
 
-    // 차트 영역 확인
-    if (!this.isPointInChartArea({ x: this.lastMouseX, y: this.lastMouseY })) {
-      return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      this.lastMouseX = e.clientX - rect.left;
+      this.lastMouseY = e.clientY - rect.top;
+
+      // 차트 영역 확인
+      if (
+        !this.isPointInChartArea({ x: this.lastMouseX, y: this.lastMouseY })
+      ) {
+        return;
+      }
+
+      this.isDragging = true;
+      this.subscribeChartUpdate("mouse-down");
+      e.preventDefault();
+    } catch (error) {
+      console.error("Error in handleMouseDown:", error);
     }
-
-    this.isDragging = true;
-    this.subscribeChartUpdate("mouse-down");
-    e.preventDefault();
   }
 
   handleMouseMove(e) {
     if (!this.isDragging || !this.chart) return;
 
-    const rect = this.chart.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    try {
+      // canvas가 null인지 확인
+      if (!this.chart.canvas) {
+        console.warn("Canvas is null in handleMouseMove, skipping operation");
+        this.isDragging = false; // 드래깅 상태 초기화
+        this.unsubscribeChartUpdate("mouse-move-error");
+        return;
+      }
 
-    const deltaX = x - this.lastMouseX;
-    const deltaY = y - this.lastMouseY;
+      const rect = this.chart.canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
 
-    // 차트 패닝
-    this.chartInstance.panChart(deltaX, deltaY);
+      const deltaX = x - this.lastMouseX;
+      const deltaY = y - this.lastMouseY;
 
-    this.lastMouseX = x;
-    this.lastMouseY = y;
+      // 차트 패닝
+      this.chartInstance.panChart(deltaX, deltaY);
+
+      this.lastMouseX = x;
+      this.lastMouseY = y;
+    } catch (error) {
+      console.error("Error in handleMouseMove:", error);
+      this.isDragging = false; // 드래깅 상태 초기화하여 더 이상의 오류 방지
+      this.unsubscribeChartUpdate("mouse-move-error");
+    }
   }
 
   handleMouseUp() {
@@ -152,13 +185,23 @@ export class ChartEventHandler {
   }
 
   isPointInChartArea(point) {
-    const chartArea = this.chart.chartArea;
-    return (
-      point.x >= chartArea.left &&
-      point.x <= chartArea.right &&
-      point.y >= chartArea.top &&
-      point.y <= chartArea.bottom
-    );
+    try {
+      if (!this.chart || !this.chart.chartArea) {
+        console.warn("Chart or chartArea is null in isPointInChartArea");
+        return false;
+      }
+
+      const chartArea = this.chart.chartArea;
+      return (
+        point.x >= chartArea.left &&
+        point.x <= chartArea.right &&
+        point.y >= chartArea.top &&
+        point.y <= chartArea.bottom
+      );
+    } catch (error) {
+      console.error("Error in isPointInChartArea:", error);
+      return false;
+    }
   }
 
   // 차트 업데이트 구독
@@ -215,35 +258,62 @@ export class ChartEventHandler {
 
   // 차트 업데이트 메서드
   updateCharts(timestamp) {
-    if (!this.chartInstance || !this.chart) return;
+    if (!this.chartInstance) return;
 
-    if (this.chartInstance.chartNeedsUpdate) {
-      // 즉시 렌더링 (스로틀링 제거)
-      this.chartInstance.renderAllCharts();
+    this.chartInstance.isUpdating = false;
+
+    try {
+      // 차트 인스턴스 유효성 검사
+      if (
+        !this.chartInstance.chart ||
+        !this.chartInstance.chart.data ||
+        !this.chartInstance.chart.data.datasets ||
+        !this.chartInstance.chart.data.datasets[0]
+      ) {
+        console.warn(
+          "차트 업데이트 중 유효하지 않은 차트 인스턴스 감지. 업데이트를 건너뜁니다."
+        );
+        return;
+      }
+
+      // 업데이트 예약 상태이면 차트 렌더링
+      if (this.chartInstance.chartNeedsUpdate) {
+        this.chartInstance.renderAllCharts();
+      }
+    } catch (error) {
+      console.error("차트 업데이트 중 오류 발생:", error);
+      // 오류 발생 시 차트 재초기화 고려
+      // this.chartInstance.createChart();
     }
   }
 
   // 이벤트 종료 후 차트 동기화를 보장하는 메서드 - 개선 버전
   synchronizeChartsAfterEvent() {
-    if (!this.chart || !this.volumeChart || !this.chartInstance) return;
+    if (!this.chart) return;
 
-    // 이벤트 종료 후 동기화를 위해 짧은 지연 적용
-    setTimeout(() => {
-      // 볼륨 차트 매니저의 정밀 동기화 사용
-      this.chartInstance.volumeChartManager.exactSyncWithMainChart(this.chart);
+    // 차트 업데이트 예약 상태 확인
+    if (this.chartInstance.chartNeedsUpdate) {
+      // 차트가 아직 렌더링 중이 아니라면 렌더링 시작
+      if (!this.chartInstance.isUpdating) {
+        this.chartInstance.isUpdating = true;
 
-      // 차트 업데이트 플래그 설정
-      this.chartInstance.chartNeedsUpdate = true;
-
-      // 즉시 렌더링하여 동기화 적용
-      requestAnimationFrame(() => {
-        this.chartInstance.renderAllCharts();
-      });
-    }, 10); // 짧은 딜레이로 Chart.js의 내부 계산 완료 기다림
+        // requestAnimationFrame을 사용하여 최적화된 렌더링
+        requestAnimationFrame(this.boundUpdateCharts);
+      }
+    }
   }
 
   // 리소스 해제
   dispose() {
-    this.unsubscribeChartUpdate("dispose");
+    if (this.chart && this.chart.canvas) {
+      const canvas = this.chart.canvas;
+
+      // 이벤트 리스너 제거
+      canvas.removeEventListener("wheel", this.handleWheel);
+      canvas.removeEventListener("mousedown", this.handleMouseDown);
+      canvas.removeEventListener("mousemove", this.handleMouseMove);
+      canvas.removeEventListener("mouseup", this.handleMouseUp);
+      canvas.removeEventListener("mouseleave", this.handleMouseLeave);
+    }
   }
 }
