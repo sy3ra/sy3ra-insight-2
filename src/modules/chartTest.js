@@ -37,6 +37,7 @@ Chart.register(...registerables, CandlestickController, CandlestickElement);
 
 export class ChartTest {
   constructor(chartCtx, crosshairCtx, overlayCtx, volumeChartCtx) {
+    this.maxVolume = 0;
     // 캔버스 컨텍스트 저장
     this.chartCtx = chartCtx;
     this.crosshairCtx = crosshairCtx;
@@ -57,6 +58,9 @@ export class ChartTest {
     this.isUpdating = false;
     this.lastValidMin = null;
     this.lastValidMax = null;
+
+    // API 데이터 한계 도달 여부
+    this.reachedApiLimit = false;
 
     // 모듈 초기화
     this.dataManager = new TypedDataManager(1000);
@@ -338,8 +342,8 @@ export class ChartTest {
             display: true,
             beginAtZero: true,
             min: 0,
-            // 볼륨 차트의 최대값 설정 - 적절한 높이로 표시되도록 조정
-            suggestedMax: this.getMaxVolume(), // 최대 볼륨 값을 기준으로 설정
+            // 볼륨 차트의 최대값 설정 - 볼륨 높이를 1/3로 줄이기 위해 최대값을 3배로 설정
+            suggestedMax: this.getMaxVolume() * 5, // 최대 볼륨 값의 3배로 설정
             grid: {
               display: false,
             },
@@ -355,7 +359,7 @@ export class ChartTest {
                 return value;
               },
             },
-            weight: 20, // 볼륨 차트의 높이를 전체 차트의 20%로 제한
+            // weight: 20, // 볼륨 차트의 높이를 전체 차트의 20%로 제한
           },
         },
         plugins: {
@@ -536,8 +540,8 @@ export class ChartTest {
     console.log("볼륨 데이터 샘플:", this.dataManager.volumes.slice(0, 5));
 
     // 최대 볼륨 값 찾기
-    const maxVolume = this.getMaxVolume();
-    console.log("최대 볼륨 값:", maxVolume);
+    // const maxVolume = this.getMaxVolume();
+    // console.log("최대 볼륨 값:", maxVolume);
 
     // 볼륨 데이터가 모두 0인지 확인
     let allZero = true;
@@ -725,27 +729,45 @@ export class ChartTest {
     const xDelta = deltaX * xValuePerPixel;
     const yDelta = deltaY * yValuePerPixel;
 
-    // 새 X 값 범위
-    const newXMin = xScale.min - xDelta;
-    const newXMax = xScale.max - xDelta;
+    // 과거 방향(-x)으로 패닝 시도 시 한계점 확인
+    if (deltaX > 0 && xScale.min <= this.earliestX) {
+      // 한계점에 도달했으므로 X축 패닝을 완전히 무시
+      // 패닝 시도 자체를 막음 (벽에 부딪히는 효과)
 
-    // 새 Y 값 범위
-    const newYMin = yScale.min + yDelta;
-    const newYMax = yScale.max + yDelta;
+      // 추가 데이터 로드 시도 (API 한계에 도달하지 않은 경우)
+      if (!this.isLoading && !this.reachedApiLimit) {
+        console.log("패닝 한계에 도달: 추가 데이터 로딩 시작");
+        this.loadMoreData().then(() => {
+          // 데이터 로딩 후 차트 업데이트
+          this.chartNeedsUpdate = true;
+        });
+      } else if (this.reachedApiLimit) {
+        console.log(
+          "API 데이터 한계에 도달했습니다. 더 이상 과거 데이터를 로드할 수 없습니다."
+        );
+      }
 
-    // X축 범위 업데이트 - 경계 제한 제거하여 무제한 패닝 허용
-    xScale.options.min = newXMin;
-    xScale.options.max = newXMax;
+      // Y축 패닝만 허용
+      yScale.options.min = yScale.min + yDelta;
+      yScale.options.max = yScale.max + yDelta;
 
-    // 볼륨 차트 동기화 코드 제거 - 이제 단일 차트로 통합되었으므로 필요 없음
-    // if (this.volumeChart) {
-    //   this.volumeChart.options.scales.x.min = newXMin;
-    //   this.volumeChart.options.scales.x.max = newXMax;
-    // }
+      // 차트 업데이트 예약
+      this.chartNeedsUpdate = true;
 
-    // Y축 업데이트
-    yScale.options.min = newYMin;
-    yScale.options.max = newYMax;
+      // 유효 범위 저장 (안전장치용)
+      this.lastValidMin = xScale.options.min;
+      this.lastValidMax = xScale.options.max;
+      return; // 여기서 함수 종료 - X축 패닝은 무시
+    }
+
+    // 일반적인 패닝 처리 (과거 한계에 도달하지 않았거나 다른 방향으로 패닝하는 경우)
+    // X축 패닝
+    xScale.options.min = xScale.min - xDelta;
+    xScale.options.max = xScale.max - xDelta;
+
+    // Y축 패닝
+    yScale.options.min = yScale.min + yDelta;
+    yScale.options.max = yScale.max + yDelta;
 
     // 업데이트 예약
     this.chartNeedsUpdate = true;
@@ -1186,17 +1208,24 @@ export class ChartTest {
 
   // 더 많은 데이터 로드 메서드 추가
   async loadMoreData(count = 500) {
-    if (this.isLoading) return;
+    // 이미 로딩 중이거나 API 한계에 도달한 경우 요청 방지
+    if (this.isLoading || this.reachedApiLimit) {
+      console.log(
+        this.reachedApiLimit
+          ? "API 데이터 한계에 도달했습니다."
+          : "이미 데이터를 로딩 중입니다."
+      );
+      return;
+    }
 
     this.isLoading = true;
+    console.log("추가 데이터 로드 시작");
 
     if (this.chartCtx && this.chartCtx.canvas) {
       this.uiHelper.showLoadingSpinner(this.chartCtx.canvas.parentNode);
     }
 
     try {
-      console.log("추가 데이터 로드 중...");
-
       // 가장 오래된 데이터의 타임스탬프 가져오기
       const oldestTimestamp =
         this.dataManager.size > 0 ? this.dataManager.timestamps[0] : Date.now();
@@ -1209,13 +1238,21 @@ export class ChartTest {
         `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=${count}&endTime=${endTime}`
       );
 
+      // 데이터 없음 또는 기대보다 적은 데이터를 받은 경우 API 한계로 간주
       if (
         !response.data ||
         !Array.isArray(response.data) ||
-        response.data.length === 0
+        response.data.length === 0 ||
+        response.data.length < count
       ) {
-        console.log("더 이상 로드할 데이터가 없습니다.");
-        return;
+        console.log(
+          "API 데이터 한계에 도달했습니다. 더 이상 과거 데이터를 로드하지 않습니다."
+        );
+        this.reachedApiLimit = true; // API 한계 플래그 설정
+
+        if (response.data.length === 0) {
+          return; // 데이터가 없으면 여기서 종료
+        }
       }
 
       // 데이터 포맷 변환
@@ -1239,39 +1276,39 @@ export class ChartTest {
       });
 
       // 시간순으로 정렬 (오래된 데이터부터)
-      formattedData.sort((a, b) => a.t - b.t);
+      formattedData.sort((a, b) => a.x - b.x);
 
       // 이전 데이터이므로 앞부분에 추가
       this.dataManager.prependCandles(formattedData);
 
-      // earliestX 업데이트
+      // earliestX 업데이트 - 새로운 한계점 설정
       if (formattedData.length > 0) {
-        this.earliestX = Math.min(this.earliestX, formattedData[0].t);
+        this.earliestX = Math.min(this.earliestX, formattedData[0].x);
       }
 
       console.log(`${formattedData.length}개의 추가 데이터를 로드했습니다.`);
 
       // 차트 데이터 업데이트
       if (this.chart) {
-        const chartData = this.dataManager.getChartJsData();
-        this.chart.data = chartData;
-
-        // X축 범위 업데이트
-        if (this.chart.options.scales.x) {
-          this.chart.options.scales.x.min = this.earliestX;
+        // 캔들스틱 데이터셋 업데이트
+        if (
+          this.chart.data &&
+          this.chart.data.datasets &&
+          this.chart.data.datasets[0]
+        ) {
+          this.chart.data.datasets[0].data = this.getCandleData();
         }
-      }
 
-      // 볼륨 차트 업데이트
-      if (this.volumeChart) {
-        const volumeData = this.dataManager.getVolumeChartData(
-          undefined,
-          undefined,
-          chartColors.upBody,
-          chartColors.downBody,
-          0.4
-        );
-        this.volumeChart.data = volumeData;
+        // 볼륨 데이터셋 업데이트
+        if (
+          this.chart.data &&
+          this.chart.data.datasets &&
+          this.chart.data.datasets[1]
+        ) {
+          this.chart.data.datasets[1].data = this.getVolumeData();
+        }
+        // X축 범위는 현재 패닝 위치를 유지
+        // 이제 사용자는 새로운 한계점까지 패닝할 수 있음
       }
 
       // 차트 업데이트
@@ -1289,53 +1326,9 @@ export class ChartTest {
 
   // 이전 데이터 로드를 위한 스크롤 감지 메서드 개선
   setupScrollLoadTrigger() {
-    if (!this.chart || !this.chart.scales || !this.chart.scales.x) return;
-
-    const xScale = this.chart.scales.x;
-
-    // 이전 값 저장을 위한 속성 추가
-    this._previousMin = xScale.min;
-
-    // 스크롤 감지 함수
-    const checkForDataLoad = () => {
-      if (!this.chart || !this.chart.scales || !this.chart.scales.x) return;
-
-      const currentMin = this.chart.scales.x.min;
-
-      console.log("스크롤 감지:", {
-        previousMin: this._previousMin,
-        currentMin,
-        earliestX: this.earliestX,
-        threshold: (this.latestX - this.earliestX) * 0.1,
-      });
-
-      // 사용자가 왼쪽으로 스크롤하여 가장 오래된 데이터에 가까워지면 더 많은 데이터 로드
-      if (
-        currentMin < this._previousMin && // 왼쪽으로 스크롤 중
-        Math.abs(currentMin - this.earliestX) <
-          (this.latestX - this.earliestX) * 0.2 // 남은 표시 영역이 20% 미만
-      ) {
-        console.log("추가 데이터 로드 트리거됨");
-        // 추가 데이터 로드
-        this.loadMoreData();
-      }
-
-      // 현재 값을 이전 값으로 저장
-      this._previousMin = currentMin;
-    };
-
-    // 차트 업데이트 후 실행할 콜백 추가
-    this.afterUpdateCallbacks = this.afterUpdateCallbacks || [];
-
-    // 이미 등록된 콜백이 있으면 제거 (중복 방지)
-    this.afterUpdateCallbacks = this.afterUpdateCallbacks.filter(
-      (cb) => cb !== checkForDataLoad
-    );
-
-    // 새 콜백 등록
-    this.afterUpdateCallbacks.push(checkForDataLoad);
-
-    console.log("스크롤 로드 트리거 설정 완료");
+    // 패닝 기반 데이터 로드로 변경되었으므로 스크롤 감지 로직 제거
+    // 이제 panChart 메서드에서 직접 데이터 로딩을 트리거합니다
+    console.log("패닝 기반 데이터 로드 트리거 설정 완료");
   }
 
   // 실시간 데이터 업데이트 메서드
@@ -1445,13 +1438,14 @@ export class ChartTest {
 
   // 최대 볼륨 값을 가져오는 메서드 추가
   getMaxVolume() {
-    let maxVolume = 0;
+    this.maxVolume = 0;
     for (let i = 0; i < this.dataManager.size; i++) {
-      if (this.dataManager.volumes[i] > maxVolume) {
-        maxVolume = this.dataManager.volumes[i];
+      if (this.dataManager.volumes[i] > this.maxVolume) {
+        this.maxVolume = this.dataManager.volumes[i];
       }
     }
+    console.log("최대 볼륨 값:", this.maxVolume);
     // 최대값이 0이면 기본값 반환
-    return maxVolume > 0 ? maxVolume : 1;
+    return this.maxVolume > 0 ? this.maxVolume : 1;
   }
 }
