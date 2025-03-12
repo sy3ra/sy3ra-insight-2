@@ -1,7 +1,7 @@
 import { tickerInstance } from "../ticker.js";
 
 export class ChartEventHandler {
-  constructor(chart, volumeChart, chartInstance) {
+  constructor(chart, chartInstance) {
     this.chart = chart;
     this.chartInstance = chartInstance;
 
@@ -27,6 +27,39 @@ export class ChartEventHandler {
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
     this.handleMouseLeave = this.handleMouseLeave.bind(this);
+
+    // 드로잉 관련 상태 추가
+    this.drawingTool = null;
+    this.isDrawingMode = false;
+    this.originalState = null;
+  }
+
+  // 드로잉 도구 등록 메서드 추가
+  registerDrawingTool(drawingTool) {
+    this.drawingTool = drawingTool;
+    console.log("드로잉 도구가 차트 이벤트 핸들러에 등록되었습니다.");
+  }
+
+  // 드로잉 모드 활성화/비활성화 메서드 추가
+  setDrawingMode(isActive) {
+    this.isDrawingMode = isActive;
+
+    // 드로잉 모드일 때 차트 패닝/줌 비활성화
+    if (isActive) {
+      this.originalState = {
+        isDragging: this.isDragging,
+        isWheelActive: this.isWheelActive,
+      };
+
+      this.isDragging = false;
+      this.isWheelActive = false;
+      console.log("드로잉 모드 활성화: 차트 패닝/줌 비활성화됨");
+    } else if (this.originalState) {
+      // 원래 상태로 복원
+      this.isDragging = this.originalState.isDragging;
+      this.isWheelActive = this.originalState.isWheelActive;
+      console.log("드로잉 모드 비활성화: 차트 패닝/줌 상태 복원됨");
+    }
   }
 
   setupEventHandlers(canvas) {
@@ -38,12 +71,13 @@ export class ChartEventHandler {
     canvas.addEventListener("mousemove", this.handleMouseMove);
     canvas.addEventListener("mouseup", this.handleMouseUp);
     canvas.addEventListener("mouseleave", this.handleMouseLeave);
-
-    console.log("차트 이벤트 핸들러가 설정되었습니다.");
   }
 
   handleWheel(e) {
     e.preventDefault();
+
+    // 드로잉 모드일 때는 휠 이벤트 무시
+    if (this.isDrawingMode) return;
 
     // 시간 제한 (throttling)
     const now = Date.now();
@@ -102,12 +136,22 @@ export class ChartEventHandler {
   }
 
   handleMouseDown(e) {
+    // 드로잉 모드일 때는 드로잉 도구에 이벤트 전달
+    if (this.isDrawingMode && this.drawingTool) {
+      const rect = e.target.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // 드로잉 도구에 클릭 이벤트 전달
+      this.drawingTool.onMouseClick(x, y);
+      return;
+    }
+
     // 오른쪽 마우스 클릭 무시
     if (e.button === 2) return;
 
     try {
       if (!e.currentTarget) {
-        console.warn("currentTarget is null in handleMouseDown");
         return;
       }
 
@@ -131,20 +175,25 @@ export class ChartEventHandler {
   }
 
   handleMouseMove(e) {
+    const rect = e.target.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // 드로잉 모드일 때는 드로잉 도구에 이벤트 전달
+    if (this.isDrawingMode && this.drawingTool) {
+      this.drawingTool.onMouseMove(x, y);
+      return;
+    }
+
     if (!this.isDragging || !this.chart) return;
 
     try {
       // canvas가 null인지 확인
       if (!this.chart.canvas) {
-        console.warn("Canvas is null in handleMouseMove, skipping operation");
         this.isDragging = false; // 드래깅 상태 초기화
         this.unsubscribeChartUpdate("mouse-move-error");
         return;
       }
-
-      const rect = this.chart.canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
 
       const deltaX = x - this.lastMouseX;
       const deltaY = y - this.lastMouseY;
@@ -161,7 +210,13 @@ export class ChartEventHandler {
     }
   }
 
-  handleMouseUp() {
+  handleMouseUp(e) {
+    // 드로잉 모드일 때는 드로잉 도구에 이벤트 전달
+    if (this.isDrawingMode && this.drawingTool) {
+      // 필요한 경우 드로잉 도구에 마우스 업 이벤트 전달
+      return;
+    }
+
     if (this.isDragging) {
       this.isDragging = false;
 
@@ -187,7 +242,6 @@ export class ChartEventHandler {
   isPointInChartArea(point) {
     try {
       if (!this.chart || !this.chart.chartArea) {
-        console.warn("Chart or chartArea is null in isPointInChartArea");
         return false;
       }
 
@@ -206,40 +260,30 @@ export class ChartEventHandler {
 
   // 차트 업데이트 구독
   subscribeChartUpdate(source = "unknown") {
-    console.log(`차트 업데이트 구독 시도 (소스: ${source})`);
     this.chartUpdateRefCount++;
 
     if (!this.isChartUpdateSubscribed) {
       tickerInstance.subscribe(this.boundUpdateCharts);
       this.isChartUpdateSubscribed = true;
-      console.log("차트 업데이트 구독 시작");
     }
-
-    console.log(`현재 구독 참조 수: ${this.chartUpdateRefCount}`);
   }
 
   // 차트 업데이트 구독 해제
   unsubscribeChartUpdate(source = "unknown") {
-    console.log(`차트 업데이트 구독 해제 시도 (소스: ${source})`);
-
     if (source === "mouse-leave") {
-      console.log("마우스가 차트 영역을 벗어남: 모든 구독 강제 해제");
       this.chartUpdateRefCount = 0;
       if (this.isChartUpdateSubscribed) {
         tickerInstance.unsubscribe(this.boundUpdateCharts);
         this.isChartUpdateSubscribed = false;
-        console.log("구독 완전히 해제됨 (mouse-leave)");
       }
       return;
     }
 
     if (source === "wheel-timer") {
       this.chartUpdateRefCount = Math.max(0, this.chartUpdateRefCount - 1);
-      console.log(`휠 타이머 종료 후 참조 수: ${this.chartUpdateRefCount}`);
       if (this.chartUpdateRefCount === 0 && this.isChartUpdateSubscribed) {
         tickerInstance.unsubscribe(this.boundUpdateCharts);
         this.isChartUpdateSubscribed = false;
-        console.log("구독 완전히 해제됨 (wheel-timer)");
       }
       return;
     }
@@ -248,11 +292,9 @@ export class ChartEventHandler {
       this.chartUpdateRefCount--;
     }
 
-    console.log(`구독 해제 후 참조 수: ${this.chartUpdateRefCount}`);
     if (this.chartUpdateRefCount === 0 && this.isChartUpdateSubscribed) {
       tickerInstance.unsubscribe(this.boundUpdateCharts);
       this.isChartUpdateSubscribed = false;
-      console.log("구독 완전히 해제됨 (일반 케이스)");
     }
   }
 
@@ -270,9 +312,6 @@ export class ChartEventHandler {
         !this.chartInstance.chart.data.datasets ||
         !this.chartInstance.chart.data.datasets[0]
       ) {
-        console.warn(
-          "차트 업데이트 중 유효하지 않은 차트 인스턴스 감지. 업데이트를 건너뜁니다."
-        );
         return;
       }
 
@@ -282,12 +321,10 @@ export class ChartEventHandler {
       }
     } catch (error) {
       console.error("차트 업데이트 중 오류 발생:", error);
-      // 오류 발생 시 차트 재초기화 고려
-      // this.chartInstance.createChart();
     }
   }
 
-  // 이벤트 종료 후 차트 동기화를 보장하는 메서드 - 개선 버전
+  // 이벤트 종료 후 차트 동기화를 보장하는 메서드
   synchronizeChartsAfterEvent() {
     if (!this.chart) return;
 

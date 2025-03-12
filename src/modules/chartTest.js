@@ -29,26 +29,21 @@ import {
 import { ChartEventHandler } from "./chart/ChartEventHandler.js";
 import { ChartOverlayManager } from "./chart/ChartOverlayManager.js";
 import { ChartPerformance } from "./chart/ChartPerformance.js";
-// import { VolumeChartManager } from "./chart/VolumeChartManager.js";
 import { ChartUIHelper } from "./chart/utils/ChartUIHelper.js";
 
 // Chart.js에 필요한 요소 등록
 Chart.register(...registerables, CandlestickController, CandlestickElement);
 
 export class ChartTest {
-  constructor(chartCtx, crosshairCtx, overlayCtx, volumeChartCtx) {
+  constructor(chartCtx, crosshairCtx, overlayCtx) {
     this.maxVolume = 0;
     // 캔버스 컨텍스트 저장
     this.chartCtx = chartCtx;
     this.crosshairCtx = crosshairCtx;
     this.overlayCtx = overlayCtx;
-    // volumeChartCtx는 더 이상 사용하지 않음
-    // this.volumeChartCtx = volumeChartCtx;
 
     // 차트 인스턴스
     this.chart = null;
-    // volumeChart 인스턴스는 더 이상 필요 없음
-    // this.volumeChart = null;
 
     // 상태 변수
     this.isLoading = false;
@@ -99,8 +94,8 @@ export class ChartTest {
 
       // 통합 차트 생성
       this.createChart();
-      console.log(this.chart);
-      // 크로스헤어 생성 (수정된 생성자로)
+
+      // 크로스헤어 생성
       this.crosshair = new ChartCrosshair(this.crosshairCtx, this.chart);
 
       // 오버레이 관리자 생성
@@ -110,23 +105,8 @@ export class ChartTest {
       );
       this.overlayManager.subscribeOverlayUpdate();
 
-      // 볼륨 차트 매니저 제거
-      // this.volumeChartManager = new VolumeChartManager(
-      //   this.volumeChartCtx,
-      //   this.dataManager
-      // );
-      // this.volumeChart = this.volumeChartManager.createVolumeChart(
-      //   this.earliestX,
-      //   this.latestX,
-      //   { Chart }
-      // );
-
-      // 이벤트 핸들러 생성 (볼륨 차트 파라미터 제거)
-      this.eventHandler = new ChartEventHandler(
-        this.chart,
-        this.chart, // null 대신 this.chart 전달 (볼륨 데이터셋이 통합 차트에 포함되어 있음)
-        this
-      );
+      // 이벤트 핸들러 생성
+      this.eventHandler = new ChartEventHandler(this.chart, this);
       this.eventHandler.setupEventHandlers(this.chart.canvas);
 
       // 차트 상태 감시 타이머 설정
@@ -137,9 +117,6 @@ export class ChartTest {
 
       // 추가 데이터 로드 트리거 설정
       this.setupScrollLoadTrigger();
-
-      // 실시간 데이터 업데이트 설정 (옵션)
-      // this.setupLiveDataUpdate();
 
       // 초기 리사이즈 실행
       this.updateCanvasSizes();
@@ -152,21 +129,9 @@ export class ChartTest {
         }
       }
 
-      // 차트 초기화 후 캔들스틱 데이터가 제대로 설정되었는지 확인
-      console.log(
-        "차트 초기화 후 캔들스틱 데이터:",
-        this.chart.data.datasets[0].data.slice(0, 3)
-      );
-
-      // 차트 옵션 확인
-      console.log("차트 옵션 확인:", {
-        candlestickColors: this.chart.options.plugins.candlestick,
-        elements: this.chart.options.elements,
-      });
-
       console.log("통합 차트 인스턴스가 생성되었습니다.");
     } catch (error) {
-      console.error("차트 초기화 중 오11류 발생:", error);
+      console.error("차트 초기화 중 오류 발생:", error);
     }
   }
 
@@ -231,11 +196,6 @@ export class ChartTest {
       // 캔들스틱과 볼륨 데이터 준비
       const candleData = this.getCandleData();
       const volumeData = this.getVolumeData();
-
-      // 데이터 확인용 로그 추가
-      console.log("캔들 데이터 샘플:", candleData.slice(0, 3));
-      console.log("볼륨 데이터 샘플:", volumeData.slice(0, 3));
-      console.log("차트 색상 설정:", chartColors);
 
       // 통합 차트 옵션 직접 정의
       const options = {
@@ -342,8 +302,8 @@ export class ChartTest {
             display: true,
             beginAtZero: true,
             min: 0,
-            // 볼륨 차트의 최대값 설정 - 볼륨 높이를 1/3로 줄이기 위해 최대값을 3배로 설정
-            suggestedMax: this.getMaxVolume() * 5, // 최대 볼륨 값의 3배로 설정
+            // 볼륨 차트의 최대값 설정
+            suggestedMax: this.getMaxVolume() * 5,
             grid: {
               display: false,
             },
@@ -359,7 +319,6 @@ export class ChartTest {
                 return value;
               },
             },
-            // weight: 20, // 볼륨 차트의 높이를 전체 차트의 20%로 제한
           },
         },
         plugins: {
@@ -393,17 +352,9 @@ export class ChartTest {
           },
         },
         datasets: {
-          bar: {
-            // barThickness: "flex",
-            // maxBarThickness: 50,
-            // minBarLength: 2,
-            // barPercentage: 0.9,
-            // categoryPercentage: 1.0,
-          },
+          bar: {},
         },
       };
-
-      console.log("차트 옵션:", options);
 
       // Chart.js에서는 데이터셋 순서가 중요함
       this.chart = new Chart(this.chartCtx, {
@@ -417,14 +368,12 @@ export class ChartTest {
               data: candleData,
               yAxisID: "y",
               order: 0,
-              // 캔들스틱 색상 설정 - 이 방식이 chartjs-chart-financial 플러그인에서 권장하는 방식
+              // 캔들스틱 색상 설정
               color: {
                 up: chartColors.upBody,
                 down: chartColors.downBody,
                 unchanged: chartColors.upBody,
               },
-              // 기존 borderColor와 backgroundColor 콜백 함수 제거
-              // 대신 단순한 색상 설정 사용
               backgroundColor: {
                 up: chartColors.upBody,
                 down: chartColors.downBody,
@@ -460,15 +409,13 @@ export class ChartTest {
               borderWidth: 0,
               yAxisID: "volume",
               order: 1,
-              // categoryPercentage: 1.0,
-              // minBarLength: 2,
             },
           ],
         },
         options: options,
       });
 
-      // getDatasetMeta 메서드 최적화 - GitHub 이슈 #11814에서 제안된 방식
+      // getDatasetMeta 메서드 최적화
       this.chart.getDatasetMeta = (datasetIndex) => {
         const dataset = this.chart.data.datasets[datasetIndex];
         const metasets = this.chart["_metasets"];
@@ -493,21 +440,9 @@ export class ChartTest {
         return meta;
       };
 
-      // 차트 초기화 후 캔들스틱 데이터가 제대로 설정되었는지 확인
-      console.log(
-        "차트 초기화 후 캔들스틱 데이터:",
-        this.chart.data.datasets[0].data.slice(0, 3)
-      );
-      console.log(
-        "차트 초기화 후 캔들스틱 색상 설정:",
-        this.chart.data.datasets[0].color
-      );
-
-      console.log("통합 차트 인스턴스가 생성되었습니다.");
       return this.chart;
     } catch (err) {
       console.error("차트 생성 중 오류:", err);
-      console.error(err.stack); // 스택 트레이스 출력
       return null;
     }
   }
@@ -524,24 +459,12 @@ export class ChartTest {
         c: this.dataManager.closes[i],
       });
     }
-    console.log(
-      "캔들 데이터 구조 확인:",
-      data.length > 0 ? data[0] : "데이터 없음"
-    );
     return data;
   }
 
   // 볼륨 데이터 가져오기
   getVolumeData() {
     const data = [];
-
-    // 볼륨 데이터 유효성 확인
-    console.log("볼륨 데이터 크기:", this.dataManager.size);
-    console.log("볼륨 데이터 샘플:", this.dataManager.volumes.slice(0, 5));
-
-    // 최대 볼륨 값 찾기
-    // const maxVolume = this.getMaxVolume();
-    // console.log("최대 볼륨 값:", maxVolume);
 
     // 볼륨 데이터가 모두 0인지 확인
     let allZero = true;
@@ -578,10 +501,6 @@ export class ChartTest {
       });
     }
 
-    console.log(
-      "볼륨 데이터 구조 확인:",
-      data.length > 0 ? data[0] : "데이터 없음"
-    );
     return data;
   }
 
@@ -736,15 +655,10 @@ export class ChartTest {
 
       // 추가 데이터 로드 시도 (API 한계에 도달하지 않은 경우)
       if (!this.isLoading && !this.reachedApiLimit) {
-        console.log("패닝 한계에 도달: 추가 데이터 로딩 시작");
         this.loadMoreData().then(() => {
           // 데이터 로딩 후 차트 업데이트
           this.chartNeedsUpdate = true;
         });
-      } else if (this.reachedApiLimit) {
-        console.log(
-          "API 데이터 한계에 도달했습니다. 더 이상 과거 데이터를 로드할 수 없습니다."
-        );
       }
 
       // Y축 패닝만 허용
@@ -801,27 +715,9 @@ export class ChartTest {
         return;
       }
 
-      console.log("차트 업데이트 전 상태:", {
-        xMin,
-        xMax,
-        "캔들 데이터셋 길이": this.chart.data.datasets[0].data.length,
-        "캔들 데이터셋 샘플": this.chart.data.datasets[0].data.slice(0, 3),
-        "볼륨 데이터셋 길이": this.chart.data.datasets[1].data.length,
-        "볼륨 데이터셋 샘플": this.chart.data.datasets[1].data.slice(0, 3),
-      });
-
       // 메인 차트 업데이트
       this.chart.resize();
       this.chart.update("none");
-
-      console.log("차트 업데이트 후 상태:", {
-        "캔들 데이터셋 길이": this.chart.data.datasets[0].data.length,
-        "캔들 데이터셋 샘플": this.chart.data.datasets[0].data.slice(0, 3),
-        "볼륨 데이터셋 길이": this.chart.data.datasets[1].data.length,
-        "볼륨 데이터셋 샘플": this.chart.data.datasets[1].data.slice(0, 3),
-      });
-
-      // 볼륨 차트 업데이트 코드 제거 - 이제 단일 차트로 통합되었으므로 필요 없음
 
       // 렌더링 타임스탬프 업데이트
       this.performance.updateRenderTimestamp();
@@ -879,12 +775,6 @@ export class ChartTest {
             xScale.options.min = this.earliestX;
             xScale.options.max = latestX;
           }
-
-          // 볼륨 차트 동기화 코드 제거 - 이제 단일 차트로 통합되었으므로 필요 없음
-          // if (this.volumeChart) {
-          //   this.volumeChart.options.scales.x.min = xScale.options.min;
-          //   this.volumeChart.options.scales.x.max = xScale.options.max;
-          // }
 
           // 즉시 렌더링
           this.chartNeedsUpdate = true;
@@ -1038,28 +928,14 @@ export class ChartTest {
 
       // 메인 차트 캔버스 크기 업데이트 (2배 크기로 설정)
       if (this.chartCtx && this.chartCtx.canvas) {
-        const mainChartHeight = containerHeight * 0.8; // 전체 높이의 80%
         const canvas = this.chartCtx.canvas;
         canvas.width = containerWidth * 2;
-        canvas.height = mainChartHeight * 2;
+        canvas.height = containerHeight * 2;
         // 스타일로 실제 표시 크기 설정
         canvas.style.width = `${containerWidth}px`;
-        canvas.style.height = `${mainChartHeight}px`;
+        canvas.style.height = `${containerHeight}px`;
         // 컨텍스트 스케일링 적용
         this.chartCtx.scale(2, 2);
-      }
-
-      // 볼륨 차트 캔버스 크기 업데이트 (2배 크기로 설정)
-      if (this.volumeChartCtx && this.volumeChartCtx.canvas) {
-        const volumeChartHeight = containerHeight * 0.2; // 전체 높이의 20%
-        const canvas = this.volumeChartCtx.canvas;
-        canvas.width = containerWidth * 2;
-        canvas.height = volumeChartHeight * 2;
-        // 스타일로 실제 표시 크기 설정
-        canvas.style.width = `${containerWidth}px`;
-        canvas.style.height = `${volumeChartHeight}px`;
-        // 컨텍스트 스케일링 적용
-        this.volumeChartCtx.scale(2, 2);
       }
 
       // 크로스헤어 캔버스 크기 업데이트 (2배 크기로 설정)
@@ -1129,11 +1005,6 @@ export class ChartTest {
     // 오버레이 매니저 해제
     if (this.overlayManager) {
       this.overlayManager.dispose();
-    }
-
-    // 볼륨 차트 매니저 해제
-    if (this.volumeChartManager) {
-      this.volumeChartManager.dispose();
     }
 
     // UI 헬퍼 해제
@@ -1210,16 +1081,10 @@ export class ChartTest {
   async loadMoreData(count = 500) {
     // 이미 로딩 중이거나 API 한계에 도달한 경우 요청 방지
     if (this.isLoading || this.reachedApiLimit) {
-      console.log(
-        this.reachedApiLimit
-          ? "API 데이터 한계에 도달했습니다."
-          : "이미 데이터를 로딩 중입니다."
-      );
       return;
     }
 
     this.isLoading = true;
-    console.log("추가 데이터 로드 시작");
 
     if (this.chartCtx && this.chartCtx.canvas) {
       this.uiHelper.showLoadingSpinner(this.chartCtx.canvas.parentNode);
@@ -1245,9 +1110,6 @@ export class ChartTest {
         response.data.length === 0 ||
         response.data.length < count
       ) {
-        console.log(
-          "API 데이터 한계에 도달했습니다. 더 이상 과거 데이터를 로드하지 않습니다."
-        );
         this.reachedApiLimit = true; // API 한계 플래그 설정
 
         if (response.data.length === 0) {
@@ -1266,7 +1128,6 @@ export class ChartTest {
 
         return {
           x: timestamp,
-          // t: timestamp,
           o: open,
           h: high,
           l: low,
@@ -1285,8 +1146,6 @@ export class ChartTest {
       if (formattedData.length > 0) {
         this.earliestX = Math.min(this.earliestX, formattedData[0].x);
       }
-
-      console.log(`${formattedData.length}개의 추가 데이터를 로드했습니다.`);
 
       // 차트 데이터 업데이트
       if (this.chart) {
@@ -1327,13 +1186,10 @@ export class ChartTest {
   // 이전 데이터 로드를 위한 스크롤 감지 메서드 개선
   setupScrollLoadTrigger() {
     // 패닝 기반 데이터 로드로 변경되었으므로 스크롤 감지 로직 제거
-    // 이제 panChart 메서드에서 직접 데이터 로딩을 트리거합니다
-    console.log("패닝 기반 데이터 로드 트리거 설정 완료");
   }
 
   // 실시간 데이터 업데이트 메서드
   setupLiveDataUpdate(interval = 60000) {
-    // 기본 1분 간격
     // 기존 타이머가 있으면 제거
     if (this.liveUpdateTimer) {
       clearInterval(this.liveUpdateTimer);
@@ -1354,7 +1210,6 @@ export class ChartTest {
           !Array.isArray(response.data) ||
           response.data.length === 0
         ) {
-          console.log("새로운 데이터가 없습니다.");
           return;
         }
 
@@ -1369,21 +1224,16 @@ export class ChartTest {
 
           return {
             x: timestamp,
-            // t: timestamp,
             o: open,
             h: high,
             l: low,
             c: close,
-            v: volume, // 볼륨 데이터 추가
+            v: volume,
           };
         });
 
         // 새로운 데이터 추가
         this.addNewData(formattedData);
-
-        console.log(
-          `${formattedData.length}개의 실시간 데이터를 업데이트했습니다.`
-        );
       } catch (error) {
         console.error("실시간 데이터 업데이트 중 오류:", error);
       }
@@ -1401,10 +1251,6 @@ export class ChartTest {
 
     // 즉시 첫 번째 실행
     fetchLiveData();
-
-    console.log(
-      `실시간 데이터 업데이트가 설정되었습니다 (${interval}ms 간격).`
-    );
   }
 
   _applyTransparency(color, opacity) {
@@ -1444,8 +1290,14 @@ export class ChartTest {
         this.maxVolume = this.dataManager.volumes[i];
       }
     }
-    console.log("최대 볼륨 값:", this.maxVolume);
     // 최대값이 0이면 기본값 반환
     return this.maxVolume > 0 ? this.maxVolume : 1;
+  }
+
+  // 오버레이 렌더링 메서드 추가
+  renderOverlays() {
+    if (this.overlayManager) {
+      this.overlayManager.updateOverlayCanvas();
+    }
   }
 }

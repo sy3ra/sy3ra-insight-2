@@ -7,6 +7,7 @@ class Ticker {
   }
 
   subscribe(fn, eventType = "default") {
+    // console.log("123123 구독 추가");
     this.subscribers.set(fn, {
       eventType,
       lastExecutedTick: -1,
@@ -26,6 +27,7 @@ class Ticker {
   }
 
   tick(timestamp) {
+    // console.log("123123 틱 실행");
     if (!this.isRunning) return;
     this.currentTick++;
 
