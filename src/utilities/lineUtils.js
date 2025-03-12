@@ -12,8 +12,8 @@ export function calculateSlope(startX, startY, endX, endY) {
  */
 export function calculateDirection(startX, startY, endX, endY) {
   return {
-    x: endX >= startX ? 1 : -1,
-    y: endY >= startY ? 1 : -1,
+    x: endX > startX ? 1 : endX < startX ? -1 : 0,
+    y: endY > startY ? 1 : endY < startY ? -1 : 0,
   };
 }
 

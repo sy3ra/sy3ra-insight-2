@@ -67,13 +67,8 @@ canvas#drawingCanvas {
   pointer-events: none;
 }
 
-canvas#volumeChartCanvas {
-  z-index: 30;
-  pointer-events: none;
-}
-
 canvas#crosshairCanvas {
-  z-index: 40;
+  z-index: 30;
   pointer-events: none;
 }
 
