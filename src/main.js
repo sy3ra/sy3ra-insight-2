@@ -1,6 +1,7 @@
 import { ChartTest } from "./modules/chartTest.js";
 import { DrawingTool } from "./modules/drawingTool.js";
 import { EventManager, EventTypes } from "./utilities/eventManager.js";
+import { tickerInstance } from "./modules/ticker.js";
 
 class MainCanvas {
   constructor(parent) {
@@ -161,6 +162,27 @@ class MainCanvas {
 
 // 페이지 로드 시 메인 캔버스 초기화
 window.onload = () => {
+  // 성능 모니터링 활성화 (디버깅 용도)
+  tickerInstance.enableMonitoring(true);
+
   const mainCanvasParent = document.querySelector("#mainCanvas");
   window.mainCanvas = new MainCanvas(mainCanvasParent);
+
+  // 차트 초기화 완료 후 디버그 모드 활성화 (지연 실행)
+  setTimeout(() => {
+    if (window.mainCanvas?.chartTestInstance?.overlayManager) {
+      console.log("오버레이 매니저 디버그 모드 활성화");
+      window.mainCanvas.chartTestInstance.overlayManager.toggleCoordinateDebug(
+        true
+      );
+
+      // 구독 상태 강제 재설정
+      window.mainCanvas.chartTestInstance.overlayManager.unsubscribeOverlayUpdate();
+      window.mainCanvas.chartTestInstance.overlayManager.subscribeOverlayUpdate(
+        true
+      );
+    } else {
+      console.error("오버레이 매니저를 찾을 수 없음");
+    }
+  }, 1000);
 };

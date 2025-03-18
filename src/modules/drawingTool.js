@@ -158,11 +158,8 @@ export class DrawingTool {
       end: { x: null, y: null },
     };
 
-    // 티커 구독 상태 확인 및 해제
-    if (this.finishDrawLineHandler) {
-      tickerInstance.unsubscribe(this.finishDrawLineHandler);
-      this.finishDrawLineHandler = null;
-    }
+    // 티커 구독 상태 확인 및 해제 - 중앙화된 메서드 사용
+    this.unsubscribeFromFinishDrawLine();
   }
 
   // 그리기 모드 활성화
@@ -208,7 +205,17 @@ export class DrawingTool {
 
     // 그리기 상태 초기화
     this.clearDrawingCanvas();
-    this.resetDrawingState();
+
+    // 중앙화된 구독 해제 메서드 사용
+    this.unsubscribeFromFinishDrawLine();
+
+    // 나머지 상태 초기화
+    this.clickCount = 0;
+    this.currentPosition = { x: null, y: null };
+    this.points = {
+      start: { x: null, y: null },
+      end: { x: null, y: null },
+    };
 
     // 도구 선택 해제 (필요한 경우)
     if (resetTool && this.currentTool) {
@@ -218,7 +225,7 @@ export class DrawingTool {
 
     this.isDrawingMode = false;
     this.dispatchEvent(EventTypes.DRAWING_CANCEL, {});
-    console.log("드로잉 모드 비활성화됨");
+    console.log("드로잉 모드 비활성화됨, 도구 초기화:", resetTool);
   }
 
   // 차트 줌/팬 상태 설정 (더 명확한 구현)
@@ -819,9 +826,6 @@ export class DrawingTool {
   onMouseMove(x, y) {
     if (!this.isDrawingMode) return;
 
-    // 마우스 좌표를 캔버스 기준 좌표로 변환
-    // const chartCoords = this.getChartCoordinatesFromEvent(x, y);
-
     // 캔버스 좌표를 데이터 값으로 변환
     const { x: dataX, y: dataY, isInsideChart } = this.getValueForPixel(x, y);
 
@@ -843,32 +847,19 @@ export class DrawingTool {
         this.previewVerticalLine();
         break;
       case "Line":
-        // 첫 번째 클릭 후 선 그리기 모드에서만 처리
-        if (this.clickCount === 1) {
-          this.previewLine();
-          if (!this.finishDrawLineHandler) {
-            this.finishDrawLineHandler = this.finishDrawLine.bind(this);
-            tickerInstance.subscribe(this.finishDrawLineHandler);
-          }
-        }
-        break;
       case "Ray":
-        // 첫 번째 클릭 후 선 그리기 모드에서만 처리
-        if (this.clickCount === 1) {
-          this.previewRay();
-          if (!this.finishDrawLineHandler) {
-            this.finishDrawLineHandler = this.finishDrawLine.bind(this);
-            tickerInstance.subscribe(this.finishDrawLineHandler);
-          }
-        }
-        break;
       case "ExtendedLine":
         // 첫 번째 클릭 후 선 그리기 모드에서만 처리
         if (this.clickCount === 1) {
-          this.previewExtendedLine();
+          // 도구별 미리보기 메서드 호출
+          if (this.currentTool === "Line") this.previewLine();
+          else if (this.currentTool === "Ray") this.previewRay();
+          else if (this.currentTool === "ExtendedLine")
+            this.previewExtendedLine();
+
+          // 핸들러가 없을 때만 구독 추가 (중앙화된 메서드 사용)
           if (!this.finishDrawLineHandler) {
-            this.finishDrawLineHandler = this.finishDrawLine.bind(this);
-            tickerInstance.subscribe(this.finishDrawLineHandler);
+            this.subscribeToFinishDrawLine();
           }
         }
         break;
@@ -920,6 +911,9 @@ export class DrawingTool {
           this.previewExtendedLine();
           break;
       }
+
+      // 구독 추가 (중앙화된 메서드 사용)
+      this.subscribeToFinishDrawLine();
     }
     // 두 번째 클릭: 끝점 설정 및 그리기 완료
     else if (this.clickCount === 2) {
@@ -929,11 +923,8 @@ export class DrawingTool {
         this.clearDrawingCanvas();
         this.clickCount = 0;
 
-        // 티커에서 업데이트 핸들러 제거
-        if (this.finishDrawLineHandler) {
-          tickerInstance.unsubscribe(this.finishDrawLineHandler);
-          this.finishDrawLineHandler = null;
-        }
+        // 티커에서 업데이트 핸들러 제거 (중앙화된 메서드 사용)
+        this.unsubscribeFromFinishDrawLine();
 
         this.dispatchEvent(EventTypes.DRAWING_CANCEL, {
           reason: "차트 영역 밖 클릭",
@@ -958,11 +949,8 @@ export class DrawingTool {
       this.points.end.x = pixelX;
       this.points.end.y = pixelY;
 
-      // 티커에서 업데이트 핸들러 제거
-      if (this.finishDrawLineHandler) {
-        tickerInstance.unsubscribe(this.finishDrawLineHandler);
-        this.finishDrawLineHandler = null;
-      }
+      // 티커에서 업데이트 핸들러 제거 (중앙화된 메서드 사용)
+      this.unsubscribeFromFinishDrawLine();
 
       // 최종 그리기 저장
       this.saveDrawingToOverlay();
@@ -991,10 +979,7 @@ export class DrawingTool {
   // 선 그리기 완료 (ticker에서 호출)
   finishDrawLine() {
     if (this.clickCount !== 1 || !this.isDrawingMode) {
-      if (this.finishDrawLineHandler) {
-        tickerInstance.unsubscribe(this.finishDrawLineHandler);
-        this.finishDrawLineHandler = null;
-      }
+      this.unsubscribeFromFinishDrawLine();
       return;
     }
 
@@ -1441,10 +1426,8 @@ export class DrawingTool {
   }
 
   cleanupDrawingProcess() {
-    if (this.finishDrawLineHandler) {
-      tickerInstance.unsubscribe(this.finishDrawLineHandler);
-      this.finishDrawLineHandler = null;
-    }
+    // 중앙화된 구독 해제 메서드 사용
+    this.unsubscribeFromFinishDrawLine();
 
     this.disableDrawingMode();
 
@@ -1606,20 +1589,31 @@ export class DrawingTool {
     }, 100);
   }
 
-  disableDrawingMode(resetTool = true) {
-    this.isDrawingMode = false;
-    this.setChartZoomPanState(true);
-    this.setupMouseListeners(false);
-    this.resetDrawingState();
+  // 핸들러 구독 메서드 추가
+  subscribeToFinishDrawLine() {
+    // 기존 구독이 있으면 먼저 해제
+    this.unsubscribeFromFinishDrawLine();
 
-    // 선택된 도구 버튼 스타일은 완전히 그리기를 마칠 때만 업데이트
-    if (resetTool) {
-      // 선택된 도구 버튼 스타일 업데이트
-      this.updateToolButtonStyles(this.currentTool, false);
-      this.currentTool = null; // 도구 초기화는 resetTool이 true일 때만
+    // 새 핸들러 등록
+    this.finishDrawLineHandler = this.finishDrawLine.bind(this);
+    tickerInstance.subscribe(this.finishDrawLineHandler, {
+      eventType: "drawingUpdate",
+      priority: 10, // 높은 우선순위
+    });
+
+    console.log("finishDrawLine 핸들러 구독 추가됨");
+    return this; // 메서드 체이닝 지원
+  }
+
+  // 핸들러 구독 해제 메서드 추가
+  unsubscribeFromFinishDrawLine() {
+    if (this.finishDrawLineHandler) {
+      tickerInstance.unsubscribe(this.finishDrawLineHandler);
+      this.finishDrawLineHandler = null;
+      console.log("finishDrawLine 핸들러 구독 해제됨");
     }
 
-    console.log("그리기 모드 비활성화됨, 도구 초기화:", resetTool);
+    return this; // 메서드 체이닝 지원
   }
 
   // 디버깅을 위한 차트 영역 시각화
