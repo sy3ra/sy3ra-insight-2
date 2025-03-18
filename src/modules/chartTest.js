@@ -74,6 +74,12 @@ export class ChartTest {
     this.renderThrottleDelay = this.performance.renderThrottleDelay;
     this.lastRenderTimestamp = this.performance.lastRenderTimestamp;
 
+    // 재사용 가능한 객체들 초기화
+    this._tempPoint = { x: 0, y: 0 };
+    this._tempCandle = { x: 0, o: 0, h: 0, l: 0, c: 0 };
+    this._tempDataArray = [];
+    this._tempVolumePoint = { x: 0, y: 0 };
+
     // 차트 초기화
     this.initialize();
   }
@@ -152,29 +158,40 @@ export class ChartTest {
         throw new Error("API 응답이 유효하지 않습니다.");
       }
 
-      // 데이터 포맷 변환
-      const formattedData = response.data.map((item) => {
-        const timestamp = item[0];
-        const open = parseFloat(item[1]);
-        const high = parseFloat(item[2]);
-        const low = parseFloat(item[3]);
-        const close = parseFloat(item[4]);
-        const volume = parseFloat(item[5]);
+      // 임시 객체 생성하여 재사용
+      const tempCandle = { x: 0, o: 0, h: 0, l: 0, c: 0, v: 0 };
 
-        return {
-          x: timestamp,
-          // t: timestamp,
-          o: open,
-          h: high,
-          l: low,
-          c: close,
-          v: volume, // 볼륨 데이터 추가
-        };
-      });
+      // 임시 배열 생성 (또는 재사용)
+      if (!this._tempCandleArray) {
+        this._tempCandleArray = [];
+      }
+
+      // 배열 초기화
+      const formattedData = this._tempCandleArray;
+      formattedData.length = 0;
+
+      // API 데이터 처리
+      const responseData = response.data;
+      const length = responseData.length;
+
+      for (let i = 0; i < length; i++) {
+        const item = responseData[i];
+
+        // 임시 객체 속성 업데이트
+        tempCandle.x = item[0];
+        tempCandle.o = parseFloat(item[1]);
+        tempCandle.h = parseFloat(item[2]);
+        tempCandle.l = parseFloat(item[3]);
+        tempCandle.c = parseFloat(item[4]);
+        tempCandle.v = parseFloat(item[5]);
+
+        // 객체 복사하여 배열에 추가 (얕은 복사만으로도 충분)
+        formattedData.push({ ...tempCandle });
+      }
 
       // 데이터 관리자에 추가
       this.dataManager.addCandlesFromArray(formattedData);
-      console.log(`${formattedData.length}개의 데이터 포인트를 불러왔습니다.`);
+      console.log(`${length}개의 데이터 포인트를 불러왔습니다.`);
 
       return formattedData;
     } catch (error) {
@@ -194,6 +211,7 @@ export class ChartTest {
       }
 
       // 캔들스틱과 볼륨 데이터 준비
+      // TypedDataManager에서 기존 데이터 재사용하여 가져오기
       const candleData = this.getCandleData();
       const volumeData = this.getVolumeData();
 
@@ -447,24 +465,61 @@ export class ChartTest {
     }
   }
 
-  // 캔들 데이터 가져오기
+  // 캔들 데이터 가져오기 - 재사용 가능한 배열 및 객체 활용
   getCandleData() {
-    const data = [];
-    for (let i = 0; i < this.dataManager.size; i++) {
-      data.push({
-        x: this.dataManager.timestamps[i],
-        o: this.dataManager.opens[i],
-        h: this.dataManager.highs[i],
-        l: this.dataManager.lows[i],
-        c: this.dataManager.closes[i],
-      });
+    // 기존 배열 재사용 또는 새 배열 생성
+    if (!this._candleDataCache) {
+      this._candleDataCache = [];
     }
+
+    // 배열 초기화
+    const data = this._candleDataCache;
+    data.length = 0;
+
+    // 캔들 객체 캐시 배열
+    if (!this._candleObjectCache) {
+      this._candleObjectCache = [];
+    }
+
+    // 필요한 만큼 캔들 객체 캐시 확장
+    while (this._candleObjectCache.length < this.dataManager.size) {
+      this._candleObjectCache.push({ x: 0, o: 0, h: 0, l: 0, c: 0 });
+    }
+
+    for (let i = 0; i < this.dataManager.size; i++) {
+      const candle = this._candleObjectCache[i];
+      candle.x = this.dataManager.timestamps[i];
+      candle.o = this.dataManager.opens[i];
+      candle.h = this.dataManager.highs[i];
+      candle.l = this.dataManager.lows[i];
+      candle.c = this.dataManager.closes[i];
+
+      data.push(candle);
+    }
+
     return data;
   }
 
-  // 볼륨 데이터 가져오기
+  // 볼륨 데이터 가져오기 - 재사용 가능한 배열 및 객체 활용
   getVolumeData() {
-    const data = [];
+    // 기존 배열 재사용 또는 새 배열 생성
+    if (!this._volumeDataCache) {
+      this._volumeDataCache = [];
+    }
+
+    // 배열 초기화
+    const data = this._volumeDataCache;
+    data.length = 0;
+
+    // 볼륨 객체 캐시 배열
+    if (!this._volumeObjectCache) {
+      this._volumeObjectCache = [];
+    }
+
+    // 필요한 만큼 볼륨 객체 캐시 확장
+    while (this._volumeObjectCache.length < this.dataManager.size) {
+      this._volumeObjectCache.push({ x: 0, y: 0 });
+    }
 
     // 볼륨 데이터가 모두 0인지 확인
     let allZero = true;
@@ -482,41 +537,41 @@ export class ChartTest {
       );
       // 테스트용 더미 데이터 생성 (실제 환경에서는 제거)
       for (let i = 0; i < this.dataManager.size; i++) {
-        const randomVolume = Math.random() * 1000;
-        data.push({
-          x: this.dataManager.timestamps[i],
-          y: randomVolume,
-        });
+        const volumePoint = this._volumeObjectCache[i];
+        volumePoint.x = this.dataManager.timestamps[i];
+        volumePoint.y = Math.random() * 1000;
+        data.push(volumePoint);
       }
       return data;
     }
 
     for (let i = 0; i < this.dataManager.size; i++) {
-      // 볼륨 값이 0인 경우 최소값 설정 대신 실제 0으로 표시
-      // 이렇게 하면 볼륨이 없는 구간은 바가 표시되지 않음
-      const volumeValue = this.dataManager.volumes[i];
-      data.push({
-        x: this.dataManager.timestamps[i],
-        y: volumeValue,
-      });
+      const volumePoint = this._volumeObjectCache[i];
+      volumePoint.x = this.dataManager.timestamps[i];
+      volumePoint.y = this.dataManager.volumes[i];
+      data.push(volumePoint);
     }
 
     return data;
   }
 
-  // 인덱스의 캔들 데이터 가져오기
+  // 인덱스의 캔들 데이터 가져오기 - 단일 재사용 객체 활용
   getCandleDataAtIndex(index) {
     if (index < 0 || index >= this.dataManager.size) return null;
 
-    return {
-      x: this.dataManager.timestamps[index],
-      // t: this.dataManager.timestamps[index],
-      o: this.dataManager.opens[index],
-      h: this.dataManager.highs[index],
-      l: this.dataManager.lows[index],
-      c: this.dataManager.closes[index],
-      // v: this.dataManager.volumes[index],
-    };
+    // 임시 객체 재사용
+    if (!this._tempCandleCache) {
+      this._tempCandleCache = { x: 0, o: 0, h: 0, l: 0, c: 0 };
+    }
+
+    const candle = this._tempCandleCache;
+    candle.x = this.dataManager.timestamps[index];
+    candle.o = this.dataManager.opens[index];
+    candle.h = this.dataManager.highs[index];
+    candle.l = this.dataManager.lows[index];
+    candle.c = this.dataManager.closes[index];
+
+    return candle;
   }
 
   updateChartState(mouseX, mouseY, zoomFactor, zoomDirection) {
@@ -652,7 +707,6 @@ export class ChartTest {
     if (deltaX > 0 && xScale.min <= this.earliestX) {
       // 한계점에 도달했으므로 X축 패닝을 완전히 무시
       // 패닝 시도 자체를 막음 (벽에 부딪히는 효과)
-
       // 추가 데이터 로드 시도 (API 한계에 도달하지 않은 경우)
       if (!this.isLoading && !this.reachedApiLimit) {
         this.loadMoreData().then(() => {
@@ -660,7 +714,6 @@ export class ChartTest {
           this.chartNeedsUpdate = true;
         });
       }
-
       // Y축 패닝만 허용
       yScale.options.min = yScale.min + yDelta;
       yScale.options.max = yScale.max + yDelta;
@@ -790,7 +843,7 @@ export class ChartTest {
     }, 1000);
   }
 
-  // 데이터 추가 및 차트 업데이트
+  // 데이터 추가 및 차트 업데이트 - 기존 데이터 활용
   addNewData(newData) {
     if (!newData || !Array.isArray(newData)) return;
 
@@ -800,13 +853,9 @@ export class ChartTest {
     // 차트 데이터 업데이트
     if (this.chart && this.chart.data && this.chart.data.datasets) {
       try {
-        // 캔들스틱 데이터 업데이트 (첫 번째 데이터셋)
+        // 재사용 가능한 메서드 활용
         this.chart.data.datasets[0].data = this.getCandleData();
-
-        // 볼륨 데이터 업데이트 (두 번째 데이터셋)
         this.chart.data.datasets[1].data = this.getVolumeData();
-
-        // 볼륨 데이터셋의 backgroundColor와 borderColor는 이제 함수 기반으로 동적 계산됨
 
         this.latestX = this.dataManager.timestamps[this.dataManager.size - 1];
 
@@ -823,27 +872,49 @@ export class ChartTest {
     }
   }
 
-  // 좌표 변환 메서드
+  // 좌표 변환 메서드 - 단일 재사용 객체 활용
   pixelToValue(x, y) {
     if (!this.chart || !this.chart.scales) {
-      return { x: 0, y: 0 };
+      if (!this._tempValuePoint) {
+        this._tempValuePoint = { x: 0, y: 0 };
+      }
+      this._tempValuePoint.x = 0;
+      this._tempValuePoint.y = 0;
+      return this._tempValuePoint;
     }
 
     const xValue = this.chart.scales.x.getValueForPixel(x);
     const yValue = this.chart.scales.y.getValueForPixel(y);
 
-    return { x: xValue, y: yValue };
+    if (!this._tempValuePoint) {
+      this._tempValuePoint = { x: 0, y: 0 };
+    }
+    this._tempValuePoint.x = xValue;
+    this._tempValuePoint.y = yValue;
+
+    return this._tempValuePoint;
   }
 
   valueToPixel(x, y) {
     if (!this.chart || !this.chart.scales) {
-      return { x: 0, y: 0 };
+      if (!this._tempPixelPoint) {
+        this._tempPixelPoint = { x: 0, y: 0 };
+      }
+      this._tempPixelPoint.x = 0;
+      this._tempPixelPoint.y = 0;
+      return this._tempPixelPoint;
     }
 
     const xPixel = this.chart.scales.x.getPixelForValue(x);
     const yPixel = this.chart.scales.y.getPixelForValue(y);
 
-    return { x: xPixel, y: yPixel };
+    if (!this._tempPixelPoint) {
+      this._tempPixelPoint = { x: 0, y: 0 };
+    }
+    this._tempPixelPoint.x = xPixel;
+    this._tempPixelPoint.y = yPixel;
+
+    return this._tempPixelPoint;
   }
 
   // 성능 통계 정보 가져오기
@@ -1117,24 +1188,36 @@ export class ChartTest {
         }
       }
 
-      // 데이터 포맷 변환
-      const formattedData = response.data.map((item) => {
-        const timestamp = item[0];
-        const open = parseFloat(item[1]);
-        const high = parseFloat(item[2]);
-        const low = parseFloat(item[3]);
-        const close = parseFloat(item[4]);
-        const volume = parseFloat(item[5]);
+      // 임시 객체 생성하여 재사용
+      const tempCandle = { x: 0, o: 0, h: 0, l: 0, c: 0, v: 0 };
 
-        return {
-          x: timestamp,
-          o: open,
-          h: high,
-          l: low,
-          c: close,
-          v: volume,
-        };
-      });
+      // 임시 배열 생성 (또는 재사용)
+      if (!this._tempMoreDataArray) {
+        this._tempMoreDataArray = [];
+      }
+
+      // 배열 초기화
+      const formattedData = this._tempMoreDataArray;
+      formattedData.length = 0;
+
+      // API 데이터 처리
+      const responseData = response.data;
+      const length = responseData.length;
+
+      for (let i = 0; i < length; i++) {
+        const item = responseData[i];
+
+        // 임시 객체 속성 업데이트
+        tempCandle.x = item[0];
+        tempCandle.o = parseFloat(item[1]);
+        tempCandle.h = parseFloat(item[2]);
+        tempCandle.l = parseFloat(item[3]);
+        tempCandle.c = parseFloat(item[4]);
+        tempCandle.v = parseFloat(item[5]);
+
+        // 객체 복사하여 배열에 추가 (얕은 복사)
+        formattedData.push({ ...tempCandle });
+      }
 
       // 시간순으로 정렬 (오래된 데이터부터)
       formattedData.sort((a, b) => a.x - b.x);
@@ -1166,8 +1249,6 @@ export class ChartTest {
         ) {
           this.chart.data.datasets[1].data = this.getVolumeData();
         }
-        // X축 범위는 현재 패닝 위치를 유지
-        // 이제 사용자는 새로운 한계점까지 패닝할 수 있음
       }
 
       // 차트 업데이트
