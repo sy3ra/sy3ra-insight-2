@@ -1048,72 +1048,90 @@ export class ChartOverlayManager {
     // 차트 영역 경계
     const { left, right, top, bottom } = chartArea;
 
-    // 수평선인 경우
-    if (slope === 0) {
-      return direction > 0 ? { x: right, y: y1 } : { x: left, y: y1 };
-    }
+    // drawingTool.js의 구현 방식을 따라 교차점 계산
+    const intersections = [];
 
-    // 수직선인 경우
-    if (!isFinite(slope)) {
-      return direction > 0 ? { x: x1, y: bottom } : { x: x1, y: top };
-    }
-
-    // 일반적인 경우: 차트 영역 경계와의 교차점 계산
-    // 왼쪽 경계와의 교차점
-    const leftY = y1 + slope * (left - x1);
     // 오른쪽 경계와의 교차점
-    const rightY = y1 + slope * (right - x1);
-    // 위쪽 경계와의 교차점
-    const topX = x1 + (top - y1) / slope;
-    // 아래쪽 경계와의 교차점
-    const bottomX = x1 + (bottom - y1) / slope;
-
-    // 방향에 따라 적절한 교차점 선택
-    if (direction > 0) {
-      // 오른쪽/아래쪽 방향
-      if (x2 > x1) {
-        // 오른쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (rightY >= top && rightY <= bottom) {
-          return { x: right, y: rightY };
-        }
-        // 아래쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (bottomX >= left && bottomX <= right) {
-          return { x: bottomX, y: bottom };
-        }
-      } else {
-        // 왼쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (leftY >= top && leftY <= bottom) {
-          return { x: left, y: leftY };
-        }
-        // 아래쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (bottomX >= left && bottomX <= right) {
-          return { x: bottomX, y: bottom };
-        }
-      }
-    } else {
-      // 왼쪽/위쪽 방향
-      if (x2 < x1) {
-        // 왼쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (leftY >= top && leftY <= bottom) {
-          return { x: left, y: leftY };
-        }
-        // 위쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (topX >= left && topX <= right) {
-          return { x: topX, y: top };
-        }
-      } else {
-        // 오른쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (rightY >= top && rightY <= bottom) {
-          return { x: right, y: rightY };
-        }
-        // 위쪽 경계와의 교차점이 차트 영역 내에 있으면 사용
-        if (topX >= left && topX <= right) {
-          return { x: topX, y: top };
-        }
+    if (direction.x > 0) {
+      const yAtRight = y1 + slope * (right - x1);
+      if (yAtRight >= top && yAtRight <= bottom) {
+        intersections.push({
+          x: right,
+          y: yAtRight,
+          distance: Math.pow(right - x1, 2) + Math.pow(yAtRight - y1, 2),
+          direction: { x: 1, y: yAtRight > y1 ? 1 : -1 },
+        });
       }
     }
 
-    // 기본값으로 원래 끝점 반환
+    // 왼쪽 경계와의 교차점
+    if (direction.x < 0) {
+      const yAtLeft = y1 + slope * (left - x1);
+      if (yAtLeft >= top && yAtLeft <= bottom) {
+        intersections.push({
+          x: left,
+          y: yAtLeft,
+          distance: Math.pow(left - x1, 2) + Math.pow(yAtLeft - y1, 2),
+          direction: { x: -1, y: yAtLeft > y1 ? 1 : -1 },
+        });
+      }
+    }
+
+    // 상단 경계와의 교차점
+    if (direction.y < 0) {
+      const xAtTop = x1 + (top - y1) / slope;
+      if (xAtTop >= left && xAtTop <= right) {
+        intersections.push({
+          x: xAtTop,
+          y: top,
+          distance: Math.pow(xAtTop - x1, 2) + Math.pow(top - y1, 2),
+          direction: { x: xAtTop > x1 ? 1 : -1, y: -1 },
+        });
+      }
+    }
+
+    // 하단 경계와의 교차점
+    if (direction.y > 0) {
+      const xAtBottom = x1 + (bottom - y1) / slope;
+      if (xAtBottom >= left && xAtBottom <= right) {
+        intersections.push({
+          x: xAtBottom,
+          y: bottom,
+          distance: Math.pow(xAtBottom - x1, 2) + Math.pow(bottom - y1, 2),
+          direction: { x: xAtBottom > x1 ? 1 : -1, y: 1 },
+        });
+      }
+    }
+
+    // 방향이 일치하는 교차점만 필터링
+    const validIntersections = intersections.filter((intersection) => {
+      // x 방향과 y 방향 모두 확인
+      const dirX = intersection.x - x1;
+      const dirY = intersection.y - y1;
+      return (
+        (dirX === 0 || Math.sign(dirX) === direction.x) &&
+        (dirY === 0 || Math.sign(dirY) === direction.y)
+      );
+    });
+
+    // 유효한 교차점이 있으면 가장 먼 것 선택
+    if (validIntersections.length > 0) {
+      // 시작점에서 가장 먼 교차점 선택
+      const farthestIntersection = validIntersections.reduce(
+        (farthest, current) => {
+          const currentDist =
+            Math.pow(current.x - x1, 2) + Math.pow(current.y - y1, 2);
+          const farthestDist =
+            Math.pow(farthest.x - x1, 2) + Math.pow(farthest.y - y1, 2);
+          return currentDist > farthestDist ? current : farthest;
+        },
+        validIntersections[0]
+      );
+
+      return { x: farthestIntersection.x, y: farthestIntersection.y };
+    }
+
+    // 유효한 교차점이 없으면 원래 끝점 반환
     return { x: x2, y: y2 };
   }
 
