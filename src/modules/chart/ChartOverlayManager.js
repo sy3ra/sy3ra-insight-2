@@ -521,8 +521,8 @@ export class ChartOverlayManager {
         // 버퍼에 있는 모든 항목 한 번에 렌더링
         this._renderBufferedItems();
         console.log("렌더링 완료 123");
-        // 현재 오버레이 상태 저장 (깊은 복사)
-        this.previousOverlays = JSON.parse(JSON.stringify(overlays));
+        // 현재 오버레이 상태 저장 (얕은 복사)
+        this.previousOverlays = overlays.map((overlay) => ({ ...overlay }));
 
         // 디버그 모드에서만 로그 출력
         if (this.debugCoordinates) {
