@@ -31,6 +31,9 @@ export class ChartOverlayManager {
       debugElements: [],
     };
 
+    //패닝중 여부
+    this.isPanning = false;
+
     // 좌표 변환 디버깅 정보
     this.debugCoordinates = false;
 
@@ -144,15 +147,15 @@ export class ChartOverlayManager {
       pixelY >= chartArea.top &&
       pixelY <= chartArea.bottom;
 
-    // 디버깅 로그
-    if (this.debugCoordinates) {
-      console.log("좌표 변환 (데이터→픽셀):", {
-        데이터: { x: dataX, y: dataY },
-        픽셀: { x: pixelX, y: pixelY },
-        차트영역: chartArea,
-        영역내부: isInsideChartArea,
-      });
-    }
+    // // 디버깅 로그
+    // if (this.debugCoordinates) {
+    //   console.log("좌표 변환 (데이터→픽셀):", {
+    //     데이터: { x: dataX, y: dataY },
+    //     픽셀: { x: pixelX, y: pixelY },
+    //     차트영역: chartArea,
+    //     영역내부: isInsideChartArea,
+    //   });
+    // }
 
     return {
       x: pixelX,
@@ -179,12 +182,12 @@ export class ChartOverlayManager {
 
     // 디버깅 정보 출력
     if (this.debugCoordinates) {
-      console.log("좌표 변환:", {
-        마우스: { clientX: event.clientX, clientY: event.clientY },
-        캔버스: canvasCoords,
-        데이터: dataCoords,
-        차트영역내부: isInChartArea,
-      });
+      // console.log("좌표 변환:", {
+      //   마우스: { clientX: event.clientX, clientY: event.clientY },
+      //   캔버스: canvasCoords,
+      //   데이터: dataCoords,
+      //   차트영역내부: isInChartArea,
+      // });
 
       // 변환 정확도 테스트 (데이터 → 픽셀 → 데이터)
       const backToPixel = this._getPixelCoordinates(dataCoords.x, dataCoords.y);
@@ -408,15 +411,50 @@ export class ChartOverlayManager {
       }
     }
   }
+  // 오버레이 직접 패닝 메서드
+  panOverlays(deltaX, deltaY) {
+    if (!this.overlayCtx) return;
+
+    // 패닝 시작 플래그 설정
+    this.isPanning = true;
+
+    // 차트 스케일 정보 가져오기
+    const xScale = this.chart.scales.x;
+    const yScale = this.chart.scales.y;
+
+    // 픽셀당 데이터 비율 계산 (스케일 변환 계수)
+    const xPixelRange = xScale.right - xScale.left;
+    const yPixelRange = yScale.bottom - yScale.top;
+    const xDataRange = xScale.max - xScale.min;
+    const yDataRange = yScale.max - yScale.min;
+
+    // 변환 계수가 0이 되는 경우를 방지
+    if (xPixelRange === 0 || yPixelRange === 0) return;
+
+    // 현재 차트 영역 저장
+    this.lastPanTranslate = { x: deltaX, y: deltaY };
+
+    // 캔버스 초기화 (전체 지우기)
+    this.clearOverlayCanvas(true);
+
+    // 패닝 시 사용할 임시 변환 행렬
+    this.overlayCtx.save();
+    this.overlayCtx.translate(deltaX, deltaY);
+
+    // 버퍼의 항목들 렌더링 (기존 위치에서 deltaX, deltaY만큼 이동)
+    this._renderBufferedItems();
+
+    this.overlayCtx.restore();
+  }
 
   // 오버레이 캔버스 업데이트
-  updateOverlayCanvas(timestamp) {
+  updateOverlayCanvas() {
     try {
       // 디버그 로그 추가 (호출 확인용)
       // console.log("updateOverlayCanvas 호출됨", timestamp);
 
       const overlays = window.mainCanvas?.getOverlaysArray?.() || [];
-      const currentTime = timestamp || performance.now();
+      // const currentTime = performance.now();
 
       // 스케일 변경 감지 (기존 메서드 호출)
       const scaleChanged = this._checkChartScaleChanges();
@@ -438,19 +476,18 @@ export class ChartOverlayManager {
         return;
       }
 
-      // 렌더링 필요 여부 결정
-      const timeThresholdMet =
-        currentTime - this.lastRenderTime >= this.renderThrottleMs;
-      const renderNeeded =
-        (scaleChanged || overlaysChanged || this.renderRequired) &&
-        timeThresholdMet;
+      // // // 렌더링 필요 여부 결정
+      // const timeThresholdMet =
+      //   currentTime - this.lastRenderTime >= this.renderThrottleMs;
+      const renderNeeded = scaleChanged || overlaysChanged;
+      // const renderNeeded = true;
 
       // 변경이 감지되지 않으면 불필요한 렌더링 스킵
       if (!renderNeeded) {
         // 디버깅 모드일 때만 마우스 좌표 정보 업데이트
-        if (this.debugCoordinates && this._lastDebugMouseCoords) {
-          this._drawDebugCoordinateInfo(this._lastDebugMouseCoords);
-        }
+        // if (this.debugCoordinates && this._lastDebugMouseCoords) {
+        //   this._drawDebugCoordinateInfo(this._lastDebugMouseCoords);
+        // }
 
         // 자동 구독 관리 수행 (통합된 방식으로)
         if (
@@ -463,14 +500,16 @@ export class ChartOverlayManager {
         return;
       }
 
-      // 디버그 모드에서만 로그 출력
-      if (this.debugCoordinates) {
-        console.log("오버레이 업데이트 수행:", {
-          스케일변경: scaleChanged,
-          오버레이변경: overlaysChanged,
-          마지막렌더링이후: currentTime - this.lastRenderTime + "ms",
-        });
-      }
+      // // 디버그 모드에서만 로그 출력
+      // if (this.debugCoordinates) {
+      //   console.log("오버레이 업데이트 수행:", {
+      //     스케일변경: scaleChanged,
+      //     오버레이변경: overlaysChanged,
+      //     // 마지막렌더링이후: currentTime - this.lastRenderTime + "ms",
+      //   });
+      // }
+
+      //오버레이 패닝 translate 구현
 
       // 렌더링 버퍼 초기화
       this._clearRenderBuffer();
@@ -481,7 +520,7 @@ export class ChartOverlayManager {
 
         // 버퍼에 있는 모든 항목 한 번에 렌더링
         this._renderBufferedItems();
-
+        console.log("렌더링 완료 123");
         // 현재 오버레이 상태 저장 (깊은 복사)
         this.previousOverlays = JSON.parse(JSON.stringify(overlays));
 
@@ -506,8 +545,8 @@ export class ChartOverlayManager {
       }
 
       // 렌더링 시간 기록 및 플래그 초기화
-      this.lastRenderTime = currentTime;
-      this.renderRequired = false;
+      // this.lastRenderTime = currentTime;
+      // this.renderRequired = false;
 
       // 디버깅 모드일 때 마지막 마우스 좌표 정보 표시
       if (this.debugCoordinates && this._lastDebugMouseCoords) {
@@ -520,6 +559,7 @@ export class ChartOverlayManager {
 
   // 렌더링 버퍼 초기화
   _clearRenderBuffer() {
+    // console.log("buffer clear", this.renderBuffer);
     this.renderBuffer.lines = [];
     this.renderBuffer.horizontalLines = [];
     this.renderBuffer.verticalLines = [];
@@ -556,15 +596,15 @@ export class ChartOverlayManager {
     if (isScaleChanged) {
       // 디버그 모드에서만 로그 출력
       if (this.debugCoordinates) {
-        console.log("차트 스케일 변경 감지:", {
-          이전: this._prevScales,
-          현재: {
-            xMin: xScale.min,
-            xMax: xScale.max,
-            yMin: yScale.min,
-            yMax: yScale.max,
-          },
-        });
+        // console.log("차트 스케일 변경 감지:", {
+        //   이전: this._prevScales,
+        //   현재: {
+        //     xMin: xScale.min,
+        //     xMax: xScale.max,
+        //     yMin: yScale.min,
+        //     yMax: yScale.max,
+        //   },
+        // });
       }
 
       // 현재 스케일 정보 업데이트
@@ -613,17 +653,17 @@ export class ChartOverlayManager {
         );
         const endPixel = this._getPixelCoordinates(overlay.endX, overlay.endY);
 
-        console.log(`오버레이 #${i} 좌표 변환:`, {
-          데이터좌표: {
-            시작: { x: overlay.startX, y: overlay.startY },
-            끝: { x: overlay.endX, y: overlay.endY },
-          },
-          픽셀좌표: {
-            시작: startPixel,
-            끝: endPixel,
-          },
-          타입: overlay.lineType,
-        });
+        // console.log(`오버레이 #${i} 좌표 변환:`, {
+        //   데이터좌표: {
+        //     시작: { x: overlay.startX, y: overlay.startY },
+        //     끝: { x: overlay.endX, y: overlay.endY },
+        //   },
+        //   픽셀좌표: {
+        //     시작: startPixel,
+        //     끝: endPixel,
+        //   },
+        //   타입: overlay.lineType,
+        // });
       }
 
       // 오버레이 타입별 처리 (버퍼에 추가)
@@ -900,40 +940,6 @@ export class ChartOverlayManager {
     }
   }
 
-  // 기본 선 그리기 메서드 (버퍼 활용 버전)
-  _drawLine(startX, startY, endX, endY, style) {
-    this._addLineToBuffer(startX, startY, endX, endY, style);
-  }
-
-  // 수평선 그리기 메서드 (버퍼 활용 버전)
-  _drawHorizontalLine(y, style) {
-    this._addHorizontalLineToBuffer(y, style);
-  }
-
-  // 수직선 그리기 메서드 (버퍼 활용 버전)
-  _drawVerticalLine(x, style) {
-    this._addVerticalLineToBuffer(x, style);
-  }
-
-  // 확장 라인 그리기 메서드 (버퍼 활용 버전)
-  _drawExtendedLine(startX, startY, endX, endY, style) {
-    this._addExtendedLineToBuffer(startX, startY, endX, endY, style);
-  }
-
-  // 레이 그리기 메서드 (버퍼 활용 버전)
-  _drawRay(startX, startY, endX, endY, style) {
-    this._addRayToBuffer(startX, startY, endX, endY, style);
-  }
-
-  // 오버레이 그리기 (버퍼 활용 버전)
-  _drawOverlays(overlays, fullClear = false) {
-    // 오버레이 처리 (버퍼에 추가)
-    this._processOverlays(overlays);
-
-    // 버퍼에 있는 모든 항목 한 번에 렌더링
-    this._renderBufferedItems();
-  }
-
   // 오버레이 데이터 유효성 검사
   _isValidOverlayData(overlay) {
     // 기본 필드 검사
@@ -958,40 +964,6 @@ export class ChartOverlayManager {
     }
   }
 
-  // 일괄 라인 그리기 최적화
-  _batchRenderLines() {
-    const ctx = this.overlayCtx;
-    const lineCount = this.renderBuffer.lineCount;
-
-    if (lineCount === 0) return;
-
-    // 단일 컨텍스트 저장/복원으로 성능 향상
-    ctx.save();
-
-    for (let i = 0; i < lineCount; i++) {
-      const baseIndex = i * 4;
-      const style = this.renderBuffer.lineStyles[i];
-
-      // 스타일 설정
-      ctx.lineWidth = style.width;
-      ctx.strokeStyle = style.color;
-
-      // 라인 그리기
-      ctx.beginPath();
-      ctx.moveTo(
-        this.renderBuffer.lineCoords[baseIndex],
-        this.renderBuffer.lineCoords[baseIndex + 1]
-      );
-      ctx.lineTo(
-        this.renderBuffer.lineCoords[baseIndex + 2],
-        this.renderBuffer.lineCoords[baseIndex + 3]
-      );
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
   // 오버레이 배열 유효성 검사
   isValidOverlaysArray(overlays) {
     return overlays && Array.isArray(overlays) && overlays.length > 0;
@@ -1006,463 +978,6 @@ export class ChartOverlayManager {
       ? this.overlayCtx.canvas.height
       : this.overlayCtx.canvas.height / 2;
     this.overlayCtx.clearRect(0, 0, width, height);
-  }
-
-  // 특정 타입의 오버레이 그리기
-  drawOverlayByType(overlay) {
-    if (!overlay || !this.overlayCtx || !this.chart?.chartArea) return;
-
-    const { startX, startY, endX, endY, lineType, color, width } = overlay;
-    const chartArea = this.chart.chartArea;
-
-    this.overlayCtx.save();
-    this.overlayCtx.strokeStyle = color || "red";
-    this.overlayCtx.lineWidth = width || 1;
-
-    switch (lineType) {
-      case "HorizontalLine":
-        this.drawHorizontalLine(startY, chartArea);
-        break;
-      case "VerticalLine":
-        this.drawVerticalLine(startX, chartArea);
-        break;
-      case "ExtendedLine":
-        this.drawExtendedLine(startX, startY, endX, endY, chartArea);
-        break;
-      case "Ray":
-        this.drawRay(startX, startY, endX, endY, chartArea);
-        break;
-      default:
-        this.drawSimpleLine(startX, startY, endX, endY);
-        break;
-    }
-
-    this.overlayCtx.restore();
-  }
-
-  // 기본 선 그리기 메서드
-  _drawLine(startX, startY, endX, endY, style) {
-    if (!this.overlayCtx || !this.chart) return;
-
-    const ctx = this.overlayCtx;
-
-    // 차트 영역 정보 가져오기 (커스텀 정보 또는 차트에서 직접)
-    const chartArea = this.getChartAreaInfo() || this.chart.chartArea;
-
-    // 데이터 좌표를 픽셀 좌표로 변환 (개선된 메서드 사용)
-    const startPixel = this._getPixelCoordinates(startX, startY);
-    const endPixel = this._getPixelCoordinates(endX, endY);
-
-    if (!startPixel || !endPixel) return;
-
-    // 시작점과 끝점의 픽셀 좌표
-    const startPixelX = startPixel.x;
-    const startPixelY = startPixel.y;
-    const endPixelX = endPixel.x;
-    const endPixelY = endPixel.y;
-
-    if (this.debugCoordinates) {
-      console.log("선 그리기 좌표 변환:", {
-        데이터좌표: { startX, startY, endX, endY },
-        픽셀좌표: {
-          시작: {
-            x: startPixelX,
-            y: startPixelY,
-            영역내부: startPixel.isInsideChartArea,
-          },
-          끝: {
-            x: endPixelX,
-            y: endPixelY,
-            영역내부: endPixel.isInsideChartArea,
-          },
-        },
-        차트영역: chartArea,
-      });
-    }
-
-    // 선 그리기
-    ctx.save();
-    ctx.beginPath();
-    ctx.lineWidth = style.lineWidth || 2;
-    ctx.strokeStyle = style.strokeStyle || "#ffffff";
-    ctx.moveTo(startPixelX, startPixelY);
-    ctx.lineTo(endPixelX, endPixelY);
-    ctx.stroke();
-
-    // 디버깅 모드일 때 시작점과 끝점 표시
-    if (this.debugCoordinates) {
-      // 시작점 (빨간색)
-      ctx.fillStyle = "red";
-      ctx.beginPath();
-      ctx.arc(startPixelX, startPixelY, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 끝점 (파란색)
-      ctx.fillStyle = "blue";
-      ctx.beginPath();
-      ctx.arc(endPixelX, endPixelY, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 차트 영역 표시
-      ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(
-        chartArea.left,
-        chartArea.top,
-        chartArea.right - chartArea.left,
-        chartArea.bottom - chartArea.top
-      );
-      ctx.setLineDash([]);
-    }
-
-    ctx.restore();
-  }
-
-  // 수평선 그리기 메서드
-  _drawHorizontalLine(y, style) {
-    if (!this.overlayCtx || !this.chart) return;
-
-    const ctx = this.overlayCtx;
-    const yScale = this.chart.scales.y;
-
-    // 차트 영역 정보 가져오기 (커스텀 정보 또는 차트에서 직접)
-    const chartArea = this.getChartAreaInfo() || this.chart.chartArea;
-
-    // 데이터 y 좌표를 픽셀 좌표로 변환
-    const pixelY = yScale.getPixelForValue(y);
-
-    if (this.debugCoordinates) {
-      console.log("수평선 그리기 좌표 변환:", {
-        데이터좌표: { y },
-        픽셀좌표: { pixelY },
-        차트영역: chartArea,
-      });
-    }
-
-    // 수평선 그리기
-    ctx.save();
-    ctx.beginPath();
-    ctx.lineWidth = style.lineWidth || 2;
-    ctx.strokeStyle = style.strokeStyle || "#ffffff";
-    ctx.moveTo(chartArea.left, pixelY);
-    ctx.lineTo(chartArea.right, pixelY);
-    ctx.stroke();
-
-    // 디버깅 모드일 때 중간점 표시
-    if (this.debugCoordinates) {
-      // 중간점 (녹색)
-      ctx.fillStyle = "green";
-      ctx.beginPath();
-      ctx.arc(
-        (chartArea.left + chartArea.right) / 2,
-        pixelY,
-        4,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-
-      // 차트 영역 표시
-      ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(
-        chartArea.left,
-        chartArea.top,
-        chartArea.right - chartArea.left,
-        chartArea.bottom - chartArea.top
-      );
-      ctx.setLineDash([]);
-    }
-
-    ctx.restore();
-  }
-
-  // 수직선 그리기 메서드
-  _drawVerticalLine(x, style) {
-    if (!this.overlayCtx || !this.chart) return;
-
-    const ctx = this.overlayCtx;
-    const xScale = this.chart.scales.x;
-
-    // 차트 영역 정보 가져오기 (커스텀 정보 또는 차트에서 직접)
-    const chartArea = this.getChartAreaInfo() || this.chart.chartArea;
-
-    // 데이터 x 좌표를 픽셀 좌표로 변환
-    const pixelX = xScale.getPixelForValue(x);
-
-    if (this.debugCoordinates) {
-      console.log("수직선 그리기 좌표 변환:", {
-        데이터좌표: { x },
-        픽셀좌표: { pixelX },
-        차트영역: chartArea,
-      });
-    }
-
-    // 수직선 그리기
-    ctx.save();
-    ctx.beginPath();
-    ctx.lineWidth = style.lineWidth || 2;
-    ctx.strokeStyle = style.strokeStyle || "#ffffff";
-    ctx.moveTo(pixelX, chartArea.top);
-    ctx.lineTo(pixelX, chartArea.bottom);
-    ctx.stroke();
-
-    // 디버깅 모드일 때 중간점 표시
-    if (this.debugCoordinates) {
-      // 중간점 (녹색)
-      ctx.fillStyle = "green";
-      ctx.beginPath();
-      ctx.arc(
-        pixelX,
-        (chartArea.top + chartArea.bottom) / 2,
-        4,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-
-      // 차트 영역 표시
-      ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(
-        chartArea.left,
-        chartArea.top,
-        chartArea.right - chartArea.left,
-        chartArea.bottom - chartArea.top
-      );
-      ctx.setLineDash([]);
-    }
-
-    ctx.restore();
-  }
-
-  drawSimpleLine(startX, startY, endX, endY) {
-    this.overlayCtx.beginPath();
-    this.overlayCtx.moveTo(startX, startY);
-    this.overlayCtx.lineTo(endX, endY);
-    this.overlayCtx.stroke();
-  }
-
-  _drawExtendedLine(startX, startY, endX, endY, style) {
-    if (!this.overlayCtx || !this.chart) return;
-
-    const ctx = this.overlayCtx;
-
-    // 차트 영역 정보 가져오기 (커스텀 정보 또는 차트에서 직접)
-    const chartArea = this.getChartAreaInfo() || this.chart.chartArea;
-
-    // 데이터 좌표를 픽셀 좌표로 변환 (개선된 메서드 사용)
-    const startPixel = this._getPixelCoordinates(startX, startY);
-    const endPixel = this._getPixelCoordinates(endX, endY);
-
-    if (!startPixel || !endPixel) return;
-
-    // 시작점과 끝점의 픽셀 좌표
-    const startPixelX = startPixel.x;
-    const startPixelY = startPixel.y;
-    const endPixelX = endPixel.x;
-    const endPixelY = endPixel.y;
-
-    if (this.debugCoordinates) {
-      console.log("확장 선 그리기 좌표 변환:", {
-        데이터좌표: { startX, startY, endX, endY },
-        픽셀좌표: {
-          시작: {
-            x: startPixelX,
-            y: startPixelY,
-            영역내부: startPixel.isInsideChartArea,
-          },
-          끝: {
-            x: endPixelX,
-            y: endPixelY,
-            영역내부: endPixel.isInsideChartArea,
-          },
-        },
-        차트영역: chartArea,
-      });
-    }
-
-    // 선의 기울기 계산
-    const slope = calculateSlope(
-      startPixelX,
-      startPixelY,
-      endPixelX,
-      endPixelY
-    );
-    const direction = calculateDirection(
-      startPixelX,
-      startPixelY,
-      endPixelX,
-      endPixelY
-    );
-
-    // 차트 영역 경계까지 확장된 선의 끝점 계산
-    const extendedPoints = this._calculateExtendedLinePoints(
-      startPixelX,
-      startPixelY,
-      endPixelX,
-      endPixelY,
-      slope,
-      direction,
-      chartArea
-    );
-
-    // 확장된 선 그리기
-    ctx.save();
-    ctx.beginPath();
-    ctx.lineWidth = style.lineWidth || 2;
-    ctx.strokeStyle = style.strokeStyle || "#ffffff";
-    ctx.moveTo(extendedPoints.start.x, extendedPoints.start.y);
-    ctx.lineTo(extendedPoints.end.x, extendedPoints.end.y);
-    ctx.stroke();
-
-    // 디버깅 모드일 때 원본 점과 확장된 점 표시
-    if (this.debugCoordinates) {
-      // 원본 시작점 (빨간색)
-      ctx.fillStyle = "red";
-      ctx.beginPath();
-      ctx.arc(startPixelX, startPixelY, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 원본 끝점 (파란색)
-      ctx.fillStyle = "blue";
-      ctx.beginPath();
-      ctx.arc(endPixelX, endPixelY, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 확장된 시작점 (녹색)
-      ctx.fillStyle = "green";
-      ctx.beginPath();
-      ctx.arc(
-        extendedPoints.start.x,
-        extendedPoints.start.y,
-        3,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-
-      // 확장된 끝점 (노란색)
-      ctx.fillStyle = "yellow";
-      ctx.beginPath();
-      ctx.arc(extendedPoints.end.x, extendedPoints.end.y, 3, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 차트 영역 표시
-      ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(
-        chartArea.left,
-        chartArea.top,
-        chartArea.right - chartArea.left,
-        chartArea.bottom - chartArea.top
-      );
-      ctx.setLineDash([]);
-    }
-
-    ctx.restore();
-  }
-
-  // 레이 그리기 메서드
-  _drawRay(startX, startY, endX, endY, style) {
-    if (!this.overlayCtx || !this.chart) return;
-
-    const ctx = this.overlayCtx;
-
-    // 차트 영역 정보 가져오기 (커스텀 정보 또는 차트에서 직접)
-    const chartArea = this.getChartAreaInfo() || this.chart.chartArea;
-
-    // 데이터 좌표를 픽셀 좌표로 변환 (개선된 메서드 사용)
-    const startPixel = this._getPixelCoordinates(startX, startY);
-    const endPixel = this._getPixelCoordinates(endX, endY);
-
-    if (!startPixel || !endPixel) return;
-
-    // 시작점과 끝점의 픽셀 좌표
-    const startPixelX = startPixel.x;
-    const startPixelY = startPixel.y;
-    const endPixelX = endPixel.x;
-    const endPixelY = endPixel.y;
-
-    if (this.debugCoordinates) {
-      console.log("레이 그리기 좌표 변환:", {
-        데이터좌표: { startX, startY, endX, endY },
-        픽셀좌표: {
-          시작: {
-            x: startPixelX,
-            y: startPixelY,
-            영역내부: startPixel.isInsideChartArea,
-          },
-          끝: {
-            x: endPixelX,
-            y: endPixelY,
-            영역내부: endPixel.isInsideChartArea,
-          },
-        },
-        차트영역: chartArea,
-      });
-    }
-
-    // 선의 기울기 계산
-    const slope = calculateSlope(
-      startPixelX,
-      startPixelY,
-      endPixelX,
-      endPixelY
-    );
-    const direction = calculateDirection(
-      startPixelX,
-      startPixelY,
-      endPixelX,
-      endPixelY
-    );
-
-    // 차트 영역 경계까지 확장된 선의 끝점 계산
-    const extendedEnd = this._calculateRayEndPoint(
-      startPixelX,
-      startPixelY,
-      endPixelX,
-      endPixelY,
-      slope,
-      direction,
-      chartArea
-    );
-
-    // 레이 그리기
-    ctx.save();
-    ctx.beginPath();
-    ctx.lineWidth = style.lineWidth || 2;
-    ctx.strokeStyle = style.strokeStyle || "#ffffff";
-    ctx.moveTo(startPixelX, startPixelY);
-    ctx.lineTo(extendedEnd.x, extendedEnd.y);
-    ctx.stroke();
-
-    // 디버깅 모드일 때 원본 점과 확장된 점 표시
-    if (this.debugCoordinates) {
-      // 시작점 (빨간색)
-      ctx.fillStyle = "red";
-      ctx.beginPath();
-      ctx.arc(startPixelX, startPixelY, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 원본 방향점 (파란색)
-      ctx.fillStyle = "blue";
-      ctx.beginPath();
-      ctx.arc(endPixelX, endPixelY, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 확장된 끝점 (녹색)
-      ctx.fillStyle = "green";
-      ctx.beginPath();
-      ctx.arc(extendedEnd.x, extendedEnd.y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.restore();
   }
 
   // 확장된 선의 끝점 계산 유틸리티
@@ -1912,215 +1427,213 @@ export class ChartOverlayManager {
     this._renderBufferedItems();
   }
 
-  // 버퍼에 있는 모든 항목 한 번에 렌더링
+  // 버퍼에 있는 모든 항목 한 번에 렌더링 -->스위치 문으로 바꿔서 배열 한번 탐색한 후에 일괄 렌더링
   _renderBufferedItems() {
     if (!this.overlayCtx) return;
 
     const ctx = this.overlayCtx;
+    const debugMode = this.debugCoordinates;
 
-    // 1. 일반 라인 렌더링
-    if (this.renderBuffer.lines.length > 0) {
-      ctx.save();
-      for (const line of this.renderBuffer.lines) {
+    // 모든 렌더링 요소를 단일 배열로 통합
+    const allItems = [
+      ...this.renderBuffer.lines.map((item) => ({ type: "line", ...item })),
+      ...this.renderBuffer.horizontalLines.map((item) => ({
+        type: "horizontalLine",
+        ...item,
+      })),
+      ...this.renderBuffer.verticalLines.map((item) => ({
+        type: "verticalLine",
+        ...item,
+      })),
+      ...this.renderBuffer.extendedLines.map((item) => ({
+        type: "extendedLine",
+        ...item,
+      })),
+      ...this.renderBuffer.rays.map((item) => ({ type: "ray", ...item })),
+      ...this.renderBuffer.debugElements,
+    ];
+
+    if (allItems.length === 0) return;
+
+    // 스타일별로 아이템 그룹화
+    const groupedByStyle = {};
+
+    // 항목을 스타일 및 타입별로 그룹화
+    for (const item of allItems) {
+      // 디버그 요소나 특수 요소는 별도 처리
+      if (
+        item.type === "chartArea" ||
+        item.type === "chartAreaText" ||
+        item.type === "xAxis" ||
+        item.type === "yAxis"
+      ) {
+        if (!groupedByStyle[item.type]) {
+          groupedByStyle[item.type] = [];
+        }
+        groupedByStyle[item.type].push(item);
+        continue;
+      }
+
+      // 라인 스타일에 따라 그룹화
+      const styleKey = item.style
+        ? `${item.type}_${item.style.lineWidth}_${item.style.strokeStyle}`
+        : item.type;
+
+      if (!groupedByStyle[styleKey]) {
+        groupedByStyle[styleKey] = [];
+      }
+      groupedByStyle[styleKey].push(item);
+    }
+
+    ctx.save();
+
+    // 각 스타일 그룹마다 일괄 처리
+    for (const styleKey in groupedByStyle) {
+      const items = groupedByStyle[styleKey];
+      if (!items.length) continue;
+
+      // 특수 요소 처리
+      if (
+        styleKey === "chartArea" ||
+        styleKey === "chartAreaText" ||
+        styleKey === "xAxis" ||
+        styleKey === "yAxis"
+      ) {
+        for (const item of items) {
+          // this._renderSpecialItem(ctx, item);
+        }
+        continue;
+      }
+
+      // 첫 항목의 스타일 적용
+      const firstItem = items[0];
+      if (firstItem.style) {
+        ctx.lineWidth = firstItem.style.lineWidth;
+        ctx.strokeStyle = firstItem.style.strokeStyle;
+        if (firstItem.style.lineDash) {
+          ctx.setLineDash(firstItem.style.lineDash);
+        } else {
+          ctx.setLineDash([]);
+        }
+      }
+
+      // 동일 스타일의 모든 경로를 한 번에 그리기
+      ctx.beginPath();
+
+      for (const item of items) {
+        // 타입에 따라 경로 추가
+        switch (item.type) {
+          case "line":
+            ctx.moveTo(item.startPixelX, item.startPixelY);
+            ctx.lineTo(item.endPixelX, item.endPixelY);
+            break;
+
+          case "horizontalLine":
+            ctx.moveTo(item.left, item.pixelY);
+            ctx.lineTo(item.right, item.pixelY);
+            break;
+
+          case "verticalLine":
+            ctx.moveTo(item.pixelX, item.top);
+            ctx.lineTo(item.pixelX, item.bottom);
+            break;
+
+          case "extendedLine":
+            ctx.moveTo(
+              item.extendedPoints.start.x,
+              item.extendedPoints.start.y
+            );
+            ctx.lineTo(item.extendedPoints.end.x, item.extendedPoints.end.y);
+            break;
+
+          case "ray":
+            ctx.moveTo(item.startPixelX, item.startPixelY);
+            ctx.lineTo(item.extendedEnd.x, item.extendedEnd.y);
+            break;
+        }
+      }
+
+      // 모든 경로를 한 번에 그리기
+      ctx.stroke();
+
+      // 디버깅 모드일 때 추가 표시 요소 그리기
+      if (debugMode) {
+        // this._renderDebugElements(ctx, items);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // 특수 아이템 렌더링 (차트 영역, 텍스트 등)
+  _renderSpecialItem(ctx, item) {
+    switch (item.type) {
+      case "chartArea":
+        ctx.strokeStyle = item.style.strokeStyle;
+        ctx.lineWidth = item.style.lineWidth;
+        ctx.setLineDash(item.style.lineDash || []);
+        ctx.strokeRect(
+          item.chartArea.left,
+          item.chartArea.top,
+          item.chartArea.right - item.chartArea.left,
+          item.chartArea.bottom - item.chartArea.top
+        );
+        ctx.setLineDash([]);
+        break;
+
+      case "chartAreaText":
+        ctx.fillStyle = item.style.fillStyle;
+        ctx.font = item.style.font;
+        ctx.fillText(
+          item.text,
+          item.chartArea.left + 5,
+          item.chartArea.top - 5
+        );
+        break;
+
+      case "xAxis":
+        ctx.strokeStyle = item.style.strokeStyle;
+        ctx.lineWidth = item.style.lineWidth;
+        ctx.setLineDash([]);
         ctx.beginPath();
-        ctx.lineWidth = line.style.lineWidth;
-        ctx.strokeStyle = line.style.strokeStyle;
-        ctx.moveTo(line.startPixelX, line.startPixelY);
-        ctx.lineTo(line.endPixelX, line.endPixelY);
+        ctx.moveTo(item.chartArea.left, item.chartArea.bottom + 10);
+        ctx.lineTo(item.chartArea.right, item.chartArea.bottom + 10);
         ctx.stroke();
+        break;
 
-        // 디버깅 모드일 때 시작점과 끝점 표시
-        if (this.debugCoordinates) {
+      case "yAxis":
+        ctx.strokeStyle = item.style.strokeStyle;
+        ctx.lineWidth = item.style.lineWidth;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(item.chartArea.left - 10, item.chartArea.top);
+        ctx.lineTo(item.chartArea.left - 10, item.chartArea.bottom);
+        ctx.stroke();
+        break;
+    }
+  }
+
+  // 디버그 요소 렌더링
+  _renderDebugElements(ctx, items) {
+    for (const item of items) {
+      switch (item.type) {
+        case "line":
           // 시작점 (빨간색)
           ctx.fillStyle = "red";
           ctx.beginPath();
-          ctx.arc(line.startPixelX, line.startPixelY, 4, 0, Math.PI * 2);
+          ctx.arc(item.startPixelX, item.startPixelY, 4, 0, Math.PI * 2);
           ctx.fill();
 
           // 끝점 (파란색)
           ctx.fillStyle = "blue";
           ctx.beginPath();
-          ctx.arc(line.endPixelX, line.endPixelY, 4, 0, Math.PI * 2);
+          ctx.arc(item.endPixelX, item.endPixelY, 4, 0, Math.PI * 2);
           ctx.fill();
-        }
+          break;
+
+        // 다른 타입의 디버그 요소도 추가
+        // ... 생략 ...
       }
-      ctx.restore();
-    }
-
-    // 2. 수평선 렌더링
-    if (this.renderBuffer.horizontalLines.length > 0) {
-      ctx.save();
-      for (const line of this.renderBuffer.horizontalLines) {
-        ctx.beginPath();
-        ctx.lineWidth = line.style.lineWidth;
-        ctx.strokeStyle = line.style.strokeStyle;
-        ctx.moveTo(line.left, line.pixelY);
-        ctx.lineTo(line.right, line.pixelY);
-        ctx.stroke();
-
-        // 디버깅 모드일 때 중간점 표시
-        if (this.debugCoordinates) {
-          ctx.fillStyle = "green";
-          ctx.beginPath();
-          ctx.arc((line.left + line.right) / 2, line.pixelY, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      ctx.restore();
-    }
-
-    // 3. 수직선 렌더링
-    if (this.renderBuffer.verticalLines.length > 0) {
-      ctx.save();
-      for (const line of this.renderBuffer.verticalLines) {
-        ctx.beginPath();
-        ctx.lineWidth = line.style.lineWidth;
-        ctx.strokeStyle = line.style.strokeStyle;
-        ctx.moveTo(line.pixelX, line.top);
-        ctx.lineTo(line.pixelX, line.bottom);
-        ctx.stroke();
-
-        // 디버깅 모드일 때 중간점 표시
-        if (this.debugCoordinates) {
-          ctx.fillStyle = "green";
-          ctx.beginPath();
-          ctx.arc(line.pixelX, (line.top + line.bottom) / 2, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      ctx.restore();
-    }
-
-    // 4. 확장 라인 렌더링
-    if (this.renderBuffer.extendedLines.length > 0) {
-      ctx.save();
-      for (const line of this.renderBuffer.extendedLines) {
-        ctx.beginPath();
-        ctx.lineWidth = line.style.lineWidth;
-        ctx.strokeStyle = line.style.strokeStyle;
-        ctx.moveTo(line.extendedPoints.start.x, line.extendedPoints.start.y);
-        ctx.lineTo(line.extendedPoints.end.x, line.extendedPoints.end.y);
-        ctx.stroke();
-
-        // 디버깅 모드일 때 원본 점과 확장된 점 표시
-        if (this.debugCoordinates) {
-          // 원본 시작점 (빨간색)
-          ctx.fillStyle = "red";
-          ctx.beginPath();
-          ctx.arc(line.startPixelX, line.startPixelY, 4, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 원본 끝점 (파란색)
-          ctx.fillStyle = "blue";
-          ctx.beginPath();
-          ctx.arc(line.endPixelX, line.endPixelY, 4, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 확장된 시작점 (녹색)
-          ctx.fillStyle = "green";
-          ctx.beginPath();
-          ctx.arc(
-            line.extendedPoints.start.x,
-            line.extendedPoints.start.y,
-            3,
-            0,
-            Math.PI * 2
-          );
-          ctx.fill();
-
-          // 확장된 끝점 (노란색)
-          ctx.fillStyle = "yellow";
-          ctx.beginPath();
-          ctx.arc(
-            line.extendedPoints.end.x,
-            line.extendedPoints.end.y,
-            3,
-            0,
-            Math.PI * 2
-          );
-          ctx.fill();
-        }
-      }
-      ctx.restore();
-    }
-
-    // 5. 레이 렌더링
-    if (this.renderBuffer.rays.length > 0) {
-      ctx.save();
-      for (const ray of this.renderBuffer.rays) {
-        ctx.beginPath();
-        ctx.lineWidth = ray.style.lineWidth;
-        ctx.strokeStyle = ray.style.strokeStyle;
-        ctx.moveTo(ray.startPixelX, ray.startPixelY);
-        ctx.lineTo(ray.extendedEnd.x, ray.extendedEnd.y);
-        ctx.stroke();
-
-        // 디버깅 모드일 때 원본 점과 확장된 점 표시
-        if (this.debugCoordinates) {
-          // 시작점 (빨간색)
-          ctx.fillStyle = "red";
-          ctx.beginPath();
-          ctx.arc(ray.startPixelX, ray.startPixelY, 4, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 원본 방향점 (파란색)
-          ctx.fillStyle = "blue";
-          ctx.beginPath();
-          ctx.arc(ray.endPixelX, ray.endPixelY, 4, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 확장된 끝점 (녹색)
-          ctx.fillStyle = "green";
-          ctx.beginPath();
-          ctx.arc(ray.extendedEnd.x, ray.extendedEnd.y, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      ctx.restore();
-    }
-
-    // 6. 디버그 요소 렌더링
-    if (this.renderBuffer.debugElements.length > 0) {
-      ctx.save();
-      for (const element of this.renderBuffer.debugElements) {
-        if (element.type === "chartArea") {
-          ctx.strokeStyle = element.style.strokeStyle;
-          ctx.lineWidth = element.style.lineWidth;
-          ctx.setLineDash(element.style.lineDash);
-          ctx.strokeRect(
-            element.chartArea.left,
-            element.chartArea.top,
-            element.chartArea.right - element.chartArea.left,
-            element.chartArea.bottom - element.chartArea.top
-          );
-          ctx.setLineDash([]);
-        } else if (element.type === "chartAreaText") {
-          ctx.fillStyle = element.style.fillStyle;
-          ctx.font = element.style.font;
-          ctx.fillText(
-            element.text,
-            element.chartArea.left + 5,
-            element.chartArea.top - 5
-          );
-        } else if (element.type === "xAxis") {
-          ctx.strokeStyle = element.style.strokeStyle;
-          ctx.lineWidth = element.style.lineWidth;
-          ctx.setLineDash([]);
-          ctx.beginPath();
-          ctx.moveTo(element.chartArea.left, element.chartArea.bottom + 10);
-          ctx.lineTo(element.chartArea.right, element.chartArea.bottom + 10);
-          ctx.stroke();
-        } else if (element.type === "yAxis") {
-          ctx.strokeStyle = element.style.strokeStyle;
-          ctx.lineWidth = element.style.lineWidth;
-          ctx.setLineDash([]);
-          ctx.beginPath();
-          ctx.moveTo(element.chartArea.left - 10, element.chartArea.top);
-          ctx.lineTo(element.chartArea.left - 10, element.chartArea.bottom);
-          ctx.stroke();
-        }
-      }
-      ctx.restore();
     }
   }
 

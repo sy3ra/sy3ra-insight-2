@@ -451,12 +451,12 @@ export class DrawingTool {
       );
 
       // 디버깅 로그 추가
-      console.log("좌표 변환:", {
-        원래픽셀: { x: pixelX, y: pixelY },
-        보정픽셀: { x: adjustedX, y: adjustedY },
-        차트영역: chartArea,
-        영역내부: isInsideChart,
-      });
+      // console.log("좌표 변환:", {
+      //   원래픽셀: { x: pixelX, y: pixelY },
+      //   보정픽셀: { x: adjustedX, y: adjustedY },
+      //   차트영역: chartArea,
+      //   영역내부: isInsideChart,
+      // });
 
       return {
         x: xScale.getValueForPixel(adjustedX),
@@ -464,7 +464,7 @@ export class DrawingTool {
         isInsideChart, // 차트 영역 내부 여부 추가 반환
       };
     } catch (error) {
-      console.error("좌표 변환 중 오류:", error);
+      // console.error("좌표 변환 중 오류:", error);
       return { x: 0, y: 0, isInsideChart: false };
     }
   }
@@ -498,7 +498,7 @@ export class DrawingTool {
 
       return { x: pixelX, y: pixelY };
     } catch (error) {
-      console.error("좌표 변환 중 오류:", error);
+      // console.error("좌표 변환 중 오류:", error);
       return { x: 0, y: 0 };
     }
   }
@@ -809,15 +809,15 @@ export class DrawingTool {
     const canvasX = (x - rect.left) * scaleX;
     const canvasY = (y - rect.top) * scaleY;
 
-    console.log("마우스→차트 좌표 변환:", {
-      원본좌표: { x, y },
-      캔버스상대좌표: { x: canvasX, y: canvasY },
-      캔버스정보: {
-        rect,
-        width: canvas.width,
-        clientWidth: canvas.clientWidth,
-      },
-    });
+    // console.log("마우스→차트 좌표 변환:", {
+    //   원본좌표: { x, y },
+    //   캔버스상대좌표: { x: canvasX, y: canvasY },
+    //   캔버스정보: {
+    //     rect,
+    //     width: canvas.width,
+    //     clientWidth: canvas.clientWidth,
+    //   },
+    // });
 
     return { x: canvasX, y: canvasY };
   }

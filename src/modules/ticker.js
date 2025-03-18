@@ -48,6 +48,7 @@ class Ticker {
   }
 
   tick(timestamp) {
+    // console.time("tick start");
     // 구독자가 없거나 실행 중이 아닌 경우 루프 중단
     if (!this.isRunning || this.subscribers.size === 0) {
       this.isRunning = false;
@@ -67,7 +68,7 @@ class Ticker {
 
         // 프레임 드롭 감지 (33ms = 약 30fps 이하)
         if (frameTime > 33) {
-          console.warn(`프레임 드롭 감지: ${frameTime.toFixed(2)}ms`);
+          // console.warn(`프레임 드롭 감지: ${frameTime.toFixed(2)}ms`);
         }
       }
       this.lastTickTime = timestamp;
@@ -135,6 +136,7 @@ class Ticker {
     } else {
       this.isRunning = false;
     }
+    // console.timeEnd("tick start");
   }
 
   // 모니터링 활성화/비활성화 메서드

@@ -77,10 +77,8 @@ export class ChartCrosshair {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, this.ctx.canvas.height);
-    ctx.stroke();
 
     // 수평선 그리기
-    ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(this.ctx.canvas.width, y);
     ctx.stroke();
@@ -268,7 +266,10 @@ export class ChartCrosshair {
   // 티커에 구독
   subscribeToTicker() {
     if (!this.isSubscribed) {
-      tickerInstance.subscribe(this.boundDraw);
+      tickerInstance.subscribe(this.boundDraw, {
+        throttleMs: 8, // 스로틀링 적용
+        eventType: "chartCrosshair", // 고유한 이벤트 타입 사용
+      });
       this.isSubscribed = true;
     }
   }

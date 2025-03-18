@@ -201,6 +201,10 @@ export class ChartEventHandler {
       // 차트 패닝
       this.chartInstance.panChart(deltaX, deltaY);
 
+      if (this.chartInstance.overlayManager) {
+        this.chartInstance.overlayManager.panOverlays(deltaX, deltaY);
+      }
+
       this.lastMouseX = x;
       this.lastMouseY = y;
     } catch (error) {
