@@ -50,7 +50,7 @@ export class ChartTest {
     this.earliestX = null;
     this.latestX = null;
     this.chartNeedsUpdate = false;
-    this.isUpdating = false;
+    this.isUpdating = false; //불필요할 수 있음
     this.lastValidMin = null;
     this.lastValidMax = null;
 
@@ -70,16 +70,22 @@ export class ChartTest {
     this.eventInfoPool = createEventInfoPool();
     this.arrayPool = createArrayPool();
 
-    // 성능 관련 속성 참조
-    this.renderThrottleDelay = this.performance.renderThrottleDelay;
-    this.lastRenderTimestamp = this.performance.lastRenderTimestamp;
+    // // 성능 관련 속성 참조
+    // this.renderThrottleDelay = this.performance.renderThrottleDelay;
+    // this.lastRenderTimestamp = this.performance.lastRenderTimestamp;
 
     // 재사용 가능한 객체들 초기화
     this._tempPoint = { x: 0, y: 0 };
     this._tempCandle = { x: 0, o: 0, h: 0, l: 0, c: 0 };
     this._tempDataArray = [];
     this._tempVolumePoint = { x: 0, y: 0 };
-
+    // *** 추가: 현재 차트에 표시되는 데이터 범위 저장용 ***
+    this._visibleDataCache = {
+      candles: [],
+      volumes: [],
+      startIndex: -1,
+      endIndex: -1,
+    };
     // 차트 초기화
     this.initialize();
   }
@@ -99,7 +105,7 @@ export class ChartTest {
       this.latestX = this.dataManager.timestamps[this.dataManager.size - 1];
 
       // 통합 차트 생성
-      this.createChart();
+      this.createChart([], []);
 
       // 크로스헤어 생성
       this.crosshair = new ChartCrosshair(this.crosshairCtx, this.chart);
@@ -109,24 +115,27 @@ export class ChartTest {
         this.overlayCtx,
         this.chart
       );
-      this.overlayManager.subscribeOverlayUpdate();
+      // this.overlayManager.subscribeOverlayUpdate();
 
       // 이벤트 핸들러 생성
       this.eventHandler = new ChartEventHandler(this.chart, this);
       this.eventHandler.setupEventHandlers(this.chart.canvas);
 
       // 차트 상태 감시 타이머 설정
-      this.startChartMonitoring();
+      // this.startChartMonitoring();
 
       // 리사이징 이벤트 리스너 설정
       this.setupResizeListener();
 
       // 추가 데이터 로드 트리거 설정
-      this.setupScrollLoadTrigger();
+      // this.setupScrollLoadTrigger();
 
       // 초기 리사이즈 실행
       this.updateCanvasSizes();
-      this.renderAllCharts();
+      // this.renderAllCharts();
+      //초기 렌더링 요청
+      this.chartNeedsUpdate = true;
+      this.eventHandler.subscribeChartUpdate("initialize");
 
       // 초기 스크롤 체크 실행
       if (this.afterUpdateCallbacks && this.afterUpdateCallbacks.length > 0) {
@@ -203,7 +212,72 @@ export class ChartTest {
     }
   }
 
-  createChart() {
+  // *** 데이터 집계/필터링 함수 추가 ***
+  // OHLC 집계 대신 보이는 범위 필터링 구현 (메모리 효율 향상 목적)
+  // ChartTest.js 내의 _getVisibleData 수정
+  _getVisibleData(minVisibleTime, maxVisibleTime) {
+    if (this.dataManager.size === 0) {
+      return { candles: [], volumes: [], startIndex: -1, endIndex: -1 };
+    }
+
+    // *** 효율적인 인덱스 검색 메서드 사용 ***
+    const { startIndex, endIndex } = this.dataManager.getVisibleIndices(
+      minVisibleTime,
+      maxVisibleTime
+    );
+
+    // 유효하지 않은 범위 처리
+    if (startIndex === -1 || endIndex === -1) {
+      // 캐시 초기화 및 빈 배열 반환
+      this._visibleDataCache = {
+        candles: [],
+        volumes: [],
+        startIndex: -1,
+        endIndex: -1,
+      };
+      return this._visibleDataCache;
+    }
+
+    // 이전 캐시와 범위가 같으면 캐시 재사용 (수정: endIndex 포함하여 비교)
+    if (
+      this._visibleDataCache.startIndex === startIndex &&
+      this._visibleDataCache.endIndex === endIndex &&
+      this._visibleDataCache.candles.length === endIndex - startIndex + 1 // 정확한 개수 비교
+    ) {
+      // console.log("Using cached visible data");
+      return this._visibleDataCache;
+    }
+    // console.log(`Filtering data from index ${startIndex} to ${endIndex}`);
+
+    const visibleCandles = [];
+    const visibleVolumes = [];
+    // *** endIndex 포함하여 루프 수정 ***
+    for (let i = startIndex; i <= endIndex; i++) {
+      visibleCandles.push({
+        x: this.dataManager.timestamps[i],
+        o: this.dataManager.opens[i],
+        h: this.dataManager.highs[i],
+        l: this.dataManager.lows[i],
+        c: this.dataManager.closes[i],
+      });
+      visibleVolumes.push({
+        x: this.dataManager.timestamps[i],
+        y: this.dataManager.volumes[i],
+      });
+    }
+
+    // 새로운 데이터 캐시 (수정: endIndex 포함)
+    this._visibleDataCache = {
+      candles: visibleCandles,
+      volumes: visibleVolumes,
+      startIndex,
+      endIndex,
+    };
+
+    return this._visibleDataCache;
+  }
+
+  createChart(initialCandles = [], initialVolumes = []) {
     try {
       // 현재 차트가 있으면 제거
       if (this.chart) {
@@ -212,12 +286,13 @@ export class ChartTest {
 
       // 캔들스틱과 볼륨 데이터 준비
       // TypedDataManager에서 기존 데이터 재사용하여 가져오기
-      const candleData = this.getCandleData();
-      const volumeData = this.getVolumeData();
+      // const candleData = this.getCandleData();
+      // const volumeData = this.getVolumeData();
 
       // 통합 차트 옵션 직접 정의
       const options = {
         maintainAspectRatio: false,
+        parsing: false,
         animation: false,
         responsive: false,
         layout: {
@@ -266,7 +341,8 @@ export class ChartTest {
               },
             },
             ticks: {
-              autoSkip: false,
+              autoSkip: true,
+              maxTicksLimit: 15,
               color: "#d4d4d4",
               source: "auto",
               font: {
@@ -383,7 +459,7 @@ export class ChartTest {
               // 캔들스틱 데이터셋
               type: "candlestick",
               label: "BTC/USDT",
-              data: candleData,
+              data: initialCandles,
               yAxisID: "y",
               order: 0,
               // 캔들스틱 색상 설정
@@ -407,13 +483,13 @@ export class ChartTest {
               // 볼륨 데이터셋
               type: "bar",
               label: "Volume",
-              data: volumeData,
+              data: initialVolumes,
               backgroundColor: (ctx) => {
                 if (!ctx || !ctx.raw || ctx.raw.y === 0) return "transparent";
-
-                // 해당 인덱스의 캔들 데이터 참조
+                // *** 중요: 여기서는 현재 Chart.js 데이터셋의 데이터를 참조해야 함 ***
+                // this.getCandleDataAtIndex 대신 ctx.chart.data.datasets[0].data 사용
                 const candleIndex = ctx.dataIndex;
-                const candleData = this.getCandleDataAtIndex(candleIndex);
+                const candleData = ctx.chart.data.datasets[0].data[candleIndex]; // 현재 차트에 있는 데이터 참조
                 if (!candleData)
                   return this._applyTransparency(chartColors.downBody, 0.6);
 
@@ -466,72 +542,72 @@ export class ChartTest {
   }
 
   // 캔들 데이터 가져오기 - 매번 새 객체 생성 방식으로 변경
-  getCandleData() {
-    const data = [];
+  // getCandleData() {
+  //   const data = [];
 
-    for (let i = 0; i < this.dataManager.size; i++) {
-      data.push({
-        x: this.dataManager.timestamps[i],
-        o: this.dataManager.opens[i],
-        h: this.dataManager.highs[i],
-        l: this.dataManager.lows[i],
-        c: this.dataManager.closes[i],
-      });
-    }
+  //   for (let i = 0; i < this.dataManager.size; i++) {
+  //     data.push({
+  //       x: this.dataManager.timestamps[i],
+  //       o: this.dataManager.opens[i],
+  //       h: this.dataManager.highs[i],
+  //       l: this.dataManager.lows[i],
+  //       c: this.dataManager.closes[i],
+  //     });
+  //   }
 
-    return data;
-  }
+  //   return data;
+  // }
 
   // 볼륨 데이터 가져오기 - 매번 새 객체 생성 방식으로 변경
-  getVolumeData() {
-    const data = [];
+  // getVolumeData() {
+  //   const data = [];
 
-    // 볼륨 데이터가 모두 0인지 확인
-    let allZero = true;
-    for (let i = 0; i < this.dataManager.size; i++) {
-      if (this.dataManager.volumes[i] > 0) {
-        allZero = false;
-        break;
-      }
-    }
+  //   // 볼륨 데이터가 모두 0인지 확인
+  //   let allZero = true;
+  //   for (let i = 0; i < this.dataManager.size; i++) {
+  //     if (this.dataManager.volumes[i] > 0) {
+  //       allZero = false;
+  //       break;
+  //     }
+  //   }
 
-    // 모든 볼륨이 0이면 경고 메시지 출력
-    if (allZero) {
-      console.warn(
-        "모든 볼륨 값이 0입니다. 볼륨 차트가 표시되지 않을 수 있습니다."
-      );
-      // 테스트용 더미 데이터 생성 (실제 환경에서는 제거)
-      for (let i = 0; i < this.dataManager.size; i++) {
-        data.push({
-          x: this.dataManager.timestamps[i],
-          y: Math.random() * 1000,
-        });
-      }
-      return data;
-    }
+  //   // 모든 볼륨이 0이면 경고 메시지 출력
+  //   if (allZero) {
+  //     console.warn(
+  //       "모든 볼륨 값이 0입니다. 볼륨 차트가 표시되지 않을 수 있습니다."
+  //     );
+  //     // 테스트용 더미 데이터 생성 (실제 환경에서는 제거)
+  //     for (let i = 0; i < this.dataManager.size; i++) {
+  //       data.push({
+  //         x: this.dataManager.timestamps[i],
+  //         y: Math.random() * 1000,
+  //       });
+  //     }
+  //     return data;
+  //   }
 
-    for (let i = 0; i < this.dataManager.size; i++) {
-      data.push({
-        x: this.dataManager.timestamps[i],
-        y: this.dataManager.volumes[i],
-      });
-    }
+  //   for (let i = 0; i < this.dataManager.size; i++) {
+  //     data.push({
+  //       x: this.dataManager.timestamps[i],
+  //       y: this.dataManager.volumes[i],
+  //     });
+  //   }
 
-    return data;
-  }
+  //   return data;
+  // }
 
   // 인덱스의 캔들 데이터 가져오기 - 새 객체 생성 방식으로 변경
-  getCandleDataAtIndex(index) {
-    if (index < 0 || index >= this.dataManager.size) return null;
+  // getCandleDataAtIndex(index) {
+  //   if (index < 0 || index >= this.dataManager.size) return null;
 
-    return {
-      x: this.dataManager.timestamps[index],
-      o: this.dataManager.opens[index],
-      h: this.dataManager.highs[index],
-      l: this.dataManager.lows[index],
-      c: this.dataManager.closes[index],
-    };
-  }
+  //   return {
+  //     x: this.dataManager.timestamps[index],
+  //     o: this.dataManager.opens[index],
+  //     h: this.dataManager.highs[index],
+  //     l: this.dataManager.lows[index],
+  //     c: this.dataManager.closes[index],
+  //   };
+  // }
 
   updateChartState(mouseX, mouseY, zoomFactor, zoomDirection) {
     if (!this.chart || !this.chart.scales) return;
@@ -671,6 +747,8 @@ export class ChartTest {
         this.loadMoreData().then(() => {
           // 데이터 로딩 후 차트 업데이트
           this.chartNeedsUpdate = true;
+          // 로딩 후 즉시 반영 원하면 Ticker 구독 요청
+          this.eventHandler.subscribeChartUpdate("data-loaded");
         });
       }
       // Y축 패닝만 허용
@@ -704,32 +782,48 @@ export class ChartTest {
   }
 
   renderAllCharts() {
-    if (!this.chart) return;
+    if (!this.chart || !this.chart.scales?.x) return; // 유효성 검사 강화
 
     try {
-      // 차트 업데이트 시작 전 상태
-      const xMin = this.chart.scales.x.min;
-      const xMax = this.chart.scales.x.max;
+      const xScale = this.chart.scales.x;
+      const minVisibleTime = xScale.min;
+      const maxVisibleTime = xScale.max;
+      // *** 1. 보이는 데이터 필터링/집계 ***
+      // console.time("GetVisibleData");
+      const { candles: visibleCandles, volumes: visibleVolumes } =
+        this._getVisibleData(minVisibleTime, maxVisibleTime);
+      // console.timeEnd("GetVisibleData");
 
-      // 데이터셋 유효성 검사 추가
-      if (
-        !this.chart.data ||
-        !this.chart.data.datasets ||
-        !this.chart.data.datasets[0] ||
-        !this.chart.data.datasets[0].data ||
-        !this.chart.data.datasets[1] ||
-        !this.chart.data.datasets[1].data
-      ) {
-        console.warn(
-          "차트 데이터셋이 유효하지 않습니다. 차트를 다시 초기화합니다."
-        );
-        this.createChart(); // 차트 재생성
-        return;
+      // *** 2. Chart.js 데이터셋 업데이트 ***
+      // console.time("UpdateChartDatasets");
+      // 기존 객체를 직접 수정하는 것이 더 효율적일 수 있으나,
+      // Chart.js는 데이터 배열 참조가 바뀌어야 변경을 감지하는 경우가 많음
+      this.chart.data.datasets[0].data = visibleCandles;
+      this.chart.data.datasets[1].data = visibleVolumes;
+      // console.timeEnd("UpdateChartDatasets");
+      // *** 3. 메인 차트 업데이트 (resize + update) ***
+      // 리사이즈는 실제 크기 변경 시에만 호출하는 것이 더 효율적 (handleResize에서 처리)
+      this.chart.resize(); // 필요시에만 호출하도록 이동 고려
+
+      // console.time("Chart.update");
+      this.chart.update("none"); // 애니메이션 없이 업데이트
+      // console.timeEnd("Chart.update");
+
+      // *** 4. 오버레이 및 크로스헤어 렌더링 (필요시) ***
+      // EventHandler의 updateCharts 콜백에서 호출하는 대신 여기서 직접 호출하거나,
+      // 별도의 Ticker 구독으로 분리하는 것 고려
+      this.renderOverlays(); // 오버레이 다시 그리기
+      if (this.crosshair) {
+        // 크로스헤어는 mousemove 이벤트에 따라 이미 Ticker 루프에 의해 그려지고 있을 수 있음
+        // 여기서 강제로 다시 그릴 필요는 없을 수 있음
+        // this.crosshair.draw();
       }
+      // 렌더링 타임스탬프 업데이트 (기존 유지)
+      this.performance.updateRenderTimestamp();
+      this.lastRenderTimestamp = this.performance.lastRenderTimestamp;
 
-      // 메인 차트 업데이트
-      this.chart.resize();
-      this.chart.update("none");
+      // 차트 업데이트 상태 리셋 - EventHandler의 updateCharts 콜백에서 처리하도록 이동
+      // this.chartNeedsUpdate = false; // EventHandler에서 처리
 
       // 렌더링 타임스탬프 업데이트
       this.performance.updateRenderTimestamp();
@@ -760,75 +854,56 @@ export class ChartTest {
   }
 
   // 차트 업데이트 최적화
-  startChartMonitoring() {
-    // 차트 상태 감시 타이머
-    setInterval(() => {
-      try {
-        // 차트 있는지 확인
-        if (!this.chart || !this.chart.scales || !this.chart.scales.x) return;
+  // startChartMonitoring() {
+  //   // 차트 상태 감시 타이머
+  //   setInterval(() => {
+  //     try {
+  //       // 차트 있는지 확인
+  //       if (!this.chart || !this.chart.scales || !this.chart.scales.x) return;
 
-        const xScale = this.chart.scales.x;
+  //       const xScale = this.chart.scales.x;
 
-        // 무효한 범위 감지 및 복구
-        if (
-          isNaN(xScale.min) ||
-          isNaN(xScale.max) ||
-          xScale.min >= xScale.max
-        ) {
-          console.warn("차트 범위 복구 중...");
-          if (this.lastValidMin && this.lastValidMax) {
-            xScale.options.min = this.lastValidMin;
-            xScale.options.max = this.lastValidMax;
-          } else {
-            const latestX =
-              this.dataManager.size > 0
-                ? this.dataManager.timestamps[this.dataManager.size - 1]
-                : this.chart.data.labels[this.chart.data.labels.length - 1];
-            xScale.options.min = this.earliestX;
-            xScale.options.max = latestX;
-          }
+  //       // 무효한 범위 감지 및 복구
+  //       if (
+  //         isNaN(xScale.min) ||
+  //         isNaN(xScale.max) ||
+  //         xScale.min >= xScale.max
+  //       ) {
+  //         console.warn("차트 범위 복구 중...");
+  //         if (this.lastValidMin && this.lastValidMax) {
+  //           xScale.options.min = this.lastValidMin;
+  //           xScale.options.max = this.lastValidMax;
+  //         } else {
+  //           const latestX =
+  //             this.dataManager.size > 0
+  //               ? this.dataManager.timestamps[this.dataManager.size - 1]
+  //               : this.chart.data.labels[this.chart.data.labels.length - 1];
+  //           xScale.options.min = this.earliestX;
+  //           xScale.options.max = latestX;
+  //         }
 
-          // 즉시 렌더링
-          this.chartNeedsUpdate = true;
-          this.renderAllCharts();
-        } else {
-          // 최종 유효 범위 저장
-          this.lastValidMin = xScale.min;
-          this.lastValidMax = xScale.max;
-        }
-      } catch (e) {
-        console.error("차트 상태 확인 중 오류:", e);
-      }
-    }, 1000);
-  }
+  //         // 즉시 렌더링
+  //         this.chartNeedsUpdate = true;
+  //         this.renderAllCharts();
+  //       } else {
+  //         // 최종 유효 범위 저장
+  //         this.lastValidMin = xScale.min;
+  //         this.lastValidMax = xScale.max;
+  //       }
+  //     } catch (e) {
+  //       console.error("차트 상태 확인 중 오류:", e);
+  //     }
+  //   }, 1000);
+  // }
 
-  // 데이터 추가 및 차트 업데이트 - 기존 데이터 활용
+  // addNewData, loadMoreData: Chart.js 데이터셋 직접 수정 제거
   addNewData(newData) {
     if (!newData || !Array.isArray(newData)) return;
-
-    // 데이터 관리자에 추가
     this.dataManager.addCandlesFromArray(newData);
-
-    // 차트 데이터 업데이트
-    if (this.chart && this.chart.data && this.chart.data.datasets) {
-      try {
-        // 재사용 가능한 메서드 활용
-        this.chart.data.datasets[0].data = this.getCandleData();
-        this.chart.data.datasets[1].data = this.getVolumeData();
-
-        this.latestX = this.dataManager.timestamps[this.dataManager.size - 1];
-
-        // 차트의 기본 범위 업데이트
-        if (this.chart.options.scales.x) {
-          this.chart.options.scales.x.max = this.latestX;
-        }
-
-        // 업데이트 예약
-        this.chartNeedsUpdate = true;
-      } catch (error) {
-        console.error("데이터 업데이트 중 오류:", error);
-      }
-    }
+    this.latestX = this.dataManager.timestamps[this.dataManager.size - 1];
+    // chart.options.scales.x.max = this.latestX; // 필요 시 유지
+    this.chartNeedsUpdate = true; // 업데이트 예약
+    this.eventHandler.subscribeChartUpdate("live-data"); // Ticker 활성화
   }
 
   // 좌표 변환 메서드 - 단일 재사용 객체 활용
@@ -876,10 +951,10 @@ export class ChartTest {
     return this._tempPixelPoint;
   }
 
-  // 성능 통계 정보 가져오기
-  getPerformanceStats() {
-    return this.performance.getPerformanceStats(this.dataManager, this.chart);
-  }
+  // // 성능 통계 정보 가져오기
+  // getPerformanceStats() {
+  //   return this.performance.getPerformanceStats(this.dataManager, this.chart);
+  // }
 
   // 리사이징 이벤트 리스너 설정
   setupResizeListener() {
@@ -901,6 +976,7 @@ export class ChartTest {
   handleResize() {
     if (!this.chart) return;
 
+    // this.chart.resize();
     // 디바운싱 처리
     if (this.resizeDebounceTimer) {
       clearTimeout(this.resizeDebounceTimer);
@@ -1189,29 +1265,9 @@ export class ChartTest {
         this.earliestX = Math.min(this.earliestX, formattedData[0].x);
       }
 
-      // 차트 데이터 업데이트
-      if (this.chart) {
-        // 캔들스틱 데이터셋 업데이트
-        if (
-          this.chart.data &&
-          this.chart.data.datasets &&
-          this.chart.data.datasets[0]
-        ) {
-          this.chart.data.datasets[0].data = this.getCandleData();
-        }
-
-        // 볼륨 데이터셋 업데이트
-        if (
-          this.chart.data &&
-          this.chart.data.datasets &&
-          this.chart.data.datasets[1]
-        ) {
-          this.chart.data.datasets[1].data = this.getVolumeData();
-        }
-      }
-
       // 차트 업데이트
       this.chartNeedsUpdate = true;
+      this.eventHandler.subscribeChartUpdate("past-data");
 
       return formattedData;
     } catch (error) {
@@ -1221,11 +1277,6 @@ export class ChartTest {
       this.isLoading = false;
       this.uiHelper.hideLoadingSpinner();
     }
-  }
-
-  // 이전 데이터 로드를 위한 스크롤 감지 메서드 개선
-  setupScrollLoadTrigger() {
-    // 패닝 기반 데이터 로드로 변경되었으므로 스크롤 감지 로직 제거
   }
 
   // 실시간 데이터 업데이트 메서드

@@ -119,7 +119,7 @@ export class DrawingTool {
 
     // 이벤트 발생
     this.dispatchEvent(EventTypes.TOOL_CHANGE, { tool: toolName });
-    console.log(`도구 선택됨: ${toolName}`);
+    // console.log(`도구 선택됨: ${toolName}`);
   }
 
   // 도구 버튼 스타일 업데이트
@@ -150,7 +150,7 @@ export class DrawingTool {
 
   // 그리기 상태 초기화
   resetDrawingState() {
-    console.log("그리기 상태 초기화");
+    // console.log("그리기 상태 초기화");
     this.clickCount = 0;
     this.currentPosition = { x: null, y: null };
     this.points = {
@@ -182,7 +182,7 @@ export class DrawingTool {
 
     this.isDrawingMode = true;
     this.dispatchEvent(EventTypes.DRAWING_START, { tool: this.currentTool });
-    console.log("드로잉 모드 활성화됨");
+    // console.log("드로잉 모드 활성화됨");
 
     // 디버깅: 차트 영역 시각화 (개발 중에만 활성화)
     this.visualizeChartArea();
@@ -225,7 +225,7 @@ export class DrawingTool {
 
     this.isDrawingMode = false;
     this.dispatchEvent(EventTypes.DRAWING_CANCEL, {});
-    console.log("드로잉 모드 비활성화됨, 도구 초기화:", resetTool);
+    // console.log("드로잉 모드 비활성화됨, 도구 초기화:", resetTool);
   }
 
   // 차트 줌/팬 상태 설정 (더 명확한 구현)
@@ -256,10 +256,10 @@ export class DrawingTool {
             panEnabled: zoomOptions.pan?.enabled,
           };
 
-          console.log(
-            "차트 줌/패닝 상태가 저장되었습니다:",
-            this.originalZoomPanState
-          );
+          // console.log(
+          //   "차트 줌/패닝 상태가 저장되었습니다:",
+          //   this.originalZoomPanState
+          // );
         } else {
           // 이벤트 핸들러를 통한 상태 저장
           if (this.eventHandler) {
@@ -267,10 +267,10 @@ export class DrawingTool {
               isDragging: this.eventHandler.isDragging,
               isWheelActive: this.eventHandler.isWheelActive,
             };
-            console.log(
-              "이벤트 핸들러 상태가 저장되었습니다:",
-              this.originalZoomPanState
-            );
+            // console.log(
+            //   "이벤트 핸들러 상태가 저장되었습니다:",
+            //   this.originalZoomPanState
+            // );
           }
         }
       }
@@ -296,7 +296,7 @@ export class DrawingTool {
           if (zoomOptions.pan) zoomOptions.pan.enabled = false;
 
           chart.update("none");
-          console.log("차트 줌/패닝 기능이 비활성화되었습니다.");
+          // console.log("차트 줌/패닝 기능이 비활성화되었습니다.");
         }
       }
 
@@ -304,7 +304,7 @@ export class DrawingTool {
       if (this.eventHandler) {
         this.eventHandler.isDragging = false;
         this.eventHandler.isWheelActive = false;
-        console.log("이벤트 핸들러 상태가 비활성화되었습니다.");
+        // console.log("이벤트 핸들러 상태가 비활성화되었습니다.");
       }
     } catch (error) {
       console.error("차트 줌/패닝 비활성화 중 오류:", error);
@@ -342,10 +342,10 @@ export class DrawingTool {
           }
 
           chart.update("none");
-          console.log(
-            "차트 줌/패닝 상태가 복원되었습니다:",
-            this.originalZoomPanState
-          );
+          // console.log(
+          //   "차트 줌/패닝 상태가 복원되었습니다:",
+          //   this.originalZoomPanState
+          // );
         }
       }
 
@@ -358,8 +358,8 @@ export class DrawingTool {
         this.eventHandler.isWheelActive =
           this.originalZoomPanState.isWheelActive;
         console.log(
-          "이벤트 핸들러 상태가 복원되었습니다:",
-          this.originalZoomPanState
+          "이벤트 핸들러 상태가 복원되었습니다:"
+          // this.originalZoomPanState
         );
       }
     } catch (error) {
@@ -393,7 +393,7 @@ export class DrawingTool {
         console.error("이벤트 구독에 실패했습니다.");
       }
 
-      console.log("마우스 이벤트 구독 시작");
+      // console.log("마우스 이벤트 구독 시작");
     } else {
       // 리스너 제거
       if (typeof window.mainCanvas.removeEventListener === "function") {
@@ -411,7 +411,7 @@ export class DrawingTool {
         );
       }
 
-      console.log("마우스 이벤트 구독 취소됨");
+      // console.log("마우스 이벤트 구독 취소됨");
     }
   }
 
@@ -490,11 +490,11 @@ export class DrawingTool {
       const pixelY = yScale.getPixelForValue(dataY);
 
       // 디버깅 로그 추가
-      console.log("데이터→픽셀 변환:", {
-        데이터값: { x: dataX, y: dataY },
-        픽셀좌표: { x: pixelX, y: pixelY },
-        차트영역: chart.chartArea,
-      });
+      // console.log("데이터→픽셀 변환:", {
+      //   데이터값: { x: dataX, y: dataY },
+      //   픽셀좌표: { x: pixelX, y: pixelY },
+      //   차트영역: chart.chartArea,
+      // });
 
       return { x: pixelX, y: pixelY };
     } catch (error) {
@@ -535,7 +535,7 @@ export class DrawingTool {
 
   // 그리기 취소 메서드 수정
   cancelDrawing() {
-    console.log("그리기 취소됨");
+    //console.log("그리기 취소됨");
 
     // 드로잉 캔버스 클리어
     this.clearDrawingCanvas();
@@ -624,12 +624,12 @@ export class DrawingTool {
       this.currentPosition.y
     );
 
-    console.log("단일 클릭 선 그리기:", {
-      마우스위치: this.currentPosition,
-      픽셀좌표: { x: pixelX, y: pixelY },
-      차트영역: chartArea,
-      도구: this.currentTool,
-    });
+    // console.log("단일 클릭 선 그리기:", {
+    //   마우스위치: this.currentPosition,
+    //   픽셀좌표: { x: pixelX, y: pixelY },
+    //   차트영역: chartArea,
+    //   도구: this.currentTool,
+    // });
 
     if (this.currentTool === "HorizontalLine") {
       // 수평선: 차트 영역 좌우 경계를 사용
@@ -652,12 +652,12 @@ export class DrawingTool {
     const startData = this.getValueForPixel(start.x, start.y);
     const endData = this.getValueForPixel(end.x, end.y);
 
-    console.log("수평/수직선 저장:", {
-      시작점: startData,
-      끝점: endData,
-      도구: this.currentTool,
-      차트영역: this.chartInstance.chart.chartArea,
-    });
+    // console.log("수평/수직선 저장:", {
+    //   시작점: startData,
+    //   끝점: endData,
+    //   도구: this.currentTool,
+    //   차트영역: this.chartInstance.chart.chartArea,
+    // });
 
     // 오버레이 저장 (선 타입 정보 추가)
     if (this.overlayManager) {
@@ -675,7 +675,7 @@ export class DrawingTool {
 
       // 오버레이 업데이트 트리거
       this.overlayManager.updateOverlayCanvas();
-      console.log("오버레이 관리자를 통해 저장 완료");
+      // console.log("오버레이 관리자를 통해 저장 완료");
     } else {
       // 폴백: window.mainCanvas를 통한 저장
       window.mainCanvas.storeOverlay(
@@ -685,7 +685,7 @@ export class DrawingTool {
         endData.y,
         this.currentTool // 선 타입 정보 전달
       );
-      console.log("window.mainCanvas를 통해 저장 완료");
+      // console.log("window.mainCanvas를 통해 저장 완료");
     }
 
     this.clearDrawingCanvas();
@@ -715,11 +715,11 @@ export class DrawingTool {
     // 기울기 계산
     const slope = calculateSlope(startPoint.x, startPoint.y, pixelX, pixelY);
 
-    console.log("ExtendedLine 미리보기:", {
-      startPoint,
-      currentMouse: { x: pixelX, y: pixelY },
-      slope,
-    });
+    // console.log("ExtendedLine 미리보기:", {
+    //   startPoint,
+    //   currentMouse: { x: pixelX, y: pixelY },
+    //   slope,
+    // });
 
     let startPx, endPx;
 
@@ -834,7 +834,7 @@ export class DrawingTool {
 
     // 차트 영역 밖인 경우 추가 처리 가능
     if (!isInsideChart) {
-      console.log("마우스가 차트 영역 밖에 있습니다");
+      // console.log("마우스가 차트 영역 밖에 있습니다");
       // 필요한 경우 추가 처리
     }
 
@@ -869,8 +869,8 @@ export class DrawingTool {
   onMouseClick(x, y) {
     if (!this.isDrawingMode) return;
 
-    console.log("클릭 시 도구:", this.currentTool); // 디버깅용 로그 추가
-    console.log("클릭 시 클릭 카운트:", this.clickCount); // 디버깅용 로그 추가
+    // console.log("클릭 시 도구:", this.currentTool); // 디버깅용 로그 추가
+    // console.log("클릭 시 클릭 카운트:", this.clickCount); // 디버깅용 로그 추가
 
     // 마우스 좌표를 캔버스 기준 좌표로 변환
     // const chartCoords = this.getChartCoordinatesFromEvent(x, y);
@@ -919,7 +919,7 @@ export class DrawingTool {
     else if (this.clickCount === 2) {
       // 클릭한 지점이 차트 영역 밖인지 확인
       if (!isInsideChart) {
-        console.log("차트 영역 밖 클릭으로 그리기 취소");
+        // console.log("차트 영역 밖 클릭으로 그리기 취소");
         this.clearDrawingCanvas();
         this.clickCount = 0;
 
@@ -938,13 +938,13 @@ export class DrawingTool {
       // 데이터 좌표를 픽셀 좌표로 변환
       const { x: pixelX, y: pixelY } = this.getPixelForValue(dataX, dataY);
 
-      console.log("두 번째 클릭 - 그리기 완료:", {
-        startX: this.points.start.x,
-        startY: this.points.start.y,
-        endX: pixelX,
-        endY: pixelY,
-        tool: this.currentTool,
-      });
+      // console.log("두 번째 클릭 - 그리기 완료:", {
+      //   startX: this.points.start.x,
+      //   startY: this.points.start.y,
+      //   endX: pixelX,
+      //   endY: pixelY,
+      //   tool: this.currentTool,
+      // });
 
       this.points.end.x = pixelX;
       this.points.end.y = pixelY;
@@ -1180,14 +1180,14 @@ export class DrawingTool {
     this.drawingCtx.fill();
 
     // 디버깅 정보 표시
-    console.log("Ray 미리보기:", {
-      시작점: startPoint,
-      마우스위치: { x: pixelX, y: pixelY },
-      방향: direction,
-      교차점: intersections,
-      유효한교차점: validIntersections,
-      선택된교차점: endPx,
-    });
+    // console.log("Ray 미리보기:", {
+    //   시작점: startPoint,
+    //   마우스위치: { x: pixelX, y: pixelY },
+    //   방향: direction,
+    //   교차점: intersections,
+    //   유효한교차점: validIntersections,
+    //   선택된교차점: endPx,
+    // });
   }
 
   // 오버레이에 선 그리기 (최종 확정)
@@ -1464,12 +1464,12 @@ export class DrawingTool {
       height: chartArea.bottom - chartArea.top,
     };
 
-    console.log("오버레이 저장 시작:", {
-      startData,
-      endData,
-      tool: this.currentTool,
-      차트영역: chartAreaInfo,
-    });
+    // console.log("오버레이 저장 시작:", {
+    //   startData,
+    //   endData,
+    //   tool: this.currentTool,
+    //   차트영역: chartAreaInfo,
+    // });
 
     // 오버레이 관리자를 통한 저장 시도
     if (this.overlayManager) {
@@ -1549,12 +1549,12 @@ export class DrawingTool {
           this.currentTool // 선 타입 정보 전달
         );
       }
-      console.log("window.mainCanvas를 통해 저장 완료");
+      // console.log("window.mainCanvas를 통해 저장 완료");
     }
 
     // 오버레이 배열 확인
     if (window.mainCanvas && window.mainCanvas.getOverlaysArray) {
-      console.log("현재 오버레이 배열:", window.mainCanvas.getOverlaysArray());
+      // console.log("현재 오버레이 배열:", window.mainCanvas.getOverlaysArray());
     }
 
     // 드로잉 캔버스 비우기
@@ -1565,12 +1565,12 @@ export class DrawingTool {
 
     // 즉시 오버레이 렌더링 호출 (직접 호출 및 ChartTest 인스턴스를 통한 호출)
     if (this.overlayManager) {
-      console.log("overlayManager.updateOverlayCanvas 직접 호출");
+      // console.log("overlayManager.updateOverlayCanvas 직접 호출");
       this.overlayManager.updateOverlayCanvas();
     }
 
     if (window.mainCanvas.chartTestInstance?.renderOverlays) {
-      console.log("chartTestInstance.renderOverlays 메서드 호출");
+      // console.log("chartTestInstance.renderOverlays 메서드 호출");
       window.mainCanvas.chartTestInstance.renderOverlays();
     } else {
       console.warn("renderOverlays 메서드를 찾을 수 없습니다.");
@@ -1579,7 +1579,7 @@ export class DrawingTool {
     // 강제 리렌더링을 위한 추가 호출
     setTimeout(() => {
       if (this.overlayManager) {
-        console.log("지연된 overlayManager.updateOverlayCanvas 호출");
+        // console.log("지연된 overlayManager.updateOverlayCanvas 호출");
         this.overlayManager.updateOverlayCanvas();
       }
       if (window.mainCanvas.chartTestInstance?.renderOverlays) {
@@ -1601,7 +1601,7 @@ export class DrawingTool {
       priority: 10, // 높은 우선순위
     });
 
-    console.log("finishDrawLine 핸들러 구독 추가됨");
+    // console.log("finishDrawLine 핸들러 구독 추가됨");
     return this; // 메서드 체이닝 지원
   }
 
@@ -1610,7 +1610,7 @@ export class DrawingTool {
     if (this.finishDrawLineHandler) {
       tickerInstance.unsubscribe(this.finishDrawLineHandler);
       this.finishDrawLineHandler = null;
-      console.log("finishDrawLine 핸들러 구독 해제됨");
+      // console.log("finishDrawLine 핸들러 구독 해제됨");
     }
 
     return this; // 메서드 체이닝 지원

@@ -171,11 +171,6 @@ window.onload = () => {
   // 차트 초기화 완료 후 디버그 모드 활성화 (지연 실행)
   setTimeout(() => {
     if (window.mainCanvas?.chartTestInstance?.overlayManager) {
-      console.log("오버레이 매니저 디버그 모드 활성화");
-      window.mainCanvas.chartTestInstance.overlayManager.toggleCoordinateDebug(
-        true
-      );
-
       // 구독 상태 강제 재설정
       window.mainCanvas.chartTestInstance.overlayManager.unsubscribeOverlayUpdate();
       window.mainCanvas.chartTestInstance.overlayManager.subscribeOverlayUpdate(
