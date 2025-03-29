@@ -200,8 +200,6 @@ export class ChartTest {
 
       // 데이터 관리자에 추가
       this.dataManager.addCandlesFromArray(formattedData);
-      console.log(`${length}개의 데이터 포인트를 불러왔습니다.`);
-
       return formattedData;
     } catch (error) {
       console.error("데이터 불러오기 중 오류:", error);
@@ -244,10 +242,8 @@ export class ChartTest {
       this._visibleDataCache.endIndex === endIndex &&
       this._visibleDataCache.candles.length === endIndex - startIndex + 1 // 정확한 개수 비교
     ) {
-      // console.log("Using cached visible data");
       return this._visibleDataCache;
     }
-    // console.log(`Filtering data from index ${startIndex} to ${endIndex}`);
 
     const visibleCandles = [];
     const visibleVolumes = [];
@@ -352,8 +348,8 @@ export class ChartTest {
             },
             grid: {
               color: "rgba(255, 255, 255, 0.1)",
-              display: true,
-              drawOnChartArea: true,
+              display: false,
+              drawOnChartArea: false,
               drawTicks: false,
             },
             min: this.earliestX,
@@ -788,44 +784,25 @@ export class ChartTest {
       const xScale = this.chart.scales.x;
       const minVisibleTime = xScale.min;
       const maxVisibleTime = xScale.max;
-      // *** 1. 보이는 데이터 필터링/집계 ***
-      // console.time("GetVisibleData");
+      // 성능 측정 주석 제거하고 코드 정리
       const { candles: visibleCandles, volumes: visibleVolumes } =
         this._getVisibleData(minVisibleTime, maxVisibleTime);
-      // console.timeEnd("GetVisibleData");
 
-      // *** 2. Chart.js 데이터셋 업데이트 ***
-      // console.time("UpdateChartDatasets");
       // 기존 객체를 직접 수정하는 것이 더 효율적일 수 있으나,
       // Chart.js는 데이터 배열 참조가 바뀌어야 변경을 감지하는 경우가 많음
       this.chart.data.datasets[0].data = visibleCandles;
       this.chart.data.datasets[1].data = visibleVolumes;
-      // console.timeEnd("UpdateChartDatasets");
+
       // *** 3. 메인 차트 업데이트 (resize + update) ***
       // 리사이즈는 실제 크기 변경 시에만 호출하는 것이 더 효율적 (handleResize에서 처리)
       this.chart.resize(); // 필요시에만 호출하도록 이동 고려
 
-      // console.time("Chart.update");
       this.chart.update("none"); // 애니메이션 없이 업데이트
-      // console.timeEnd("Chart.update");
 
       // *** 4. 오버레이 및 크로스헤어 렌더링 (필요시) ***
-      // EventHandler의 updateCharts 콜백에서 호출하는 대신 여기서 직접 호출하거나,
-      // 별도의 Ticker 구독으로 분리하는 것 고려
       this.renderOverlays(); // 오버레이 다시 그리기
-      if (this.crosshair) {
-        // 크로스헤어는 mousemove 이벤트에 따라 이미 Ticker 루프에 의해 그려지고 있을 수 있음
-        // 여기서 강제로 다시 그릴 필요는 없을 수 있음
-        // this.crosshair.draw();
-      }
+
       // 렌더링 타임스탬프 업데이트 (기존 유지)
-      this.performance.updateRenderTimestamp();
-      this.lastRenderTimestamp = this.performance.lastRenderTimestamp;
-
-      // 차트 업데이트 상태 리셋 - EventHandler의 updateCharts 콜백에서 처리하도록 이동
-      // this.chartNeedsUpdate = false; // EventHandler에서 처리
-
-      // 렌더링 타임스탬프 업데이트
       this.performance.updateRenderTimestamp();
       this.lastRenderTimestamp = this.performance.lastRenderTimestamp;
 
@@ -968,15 +945,12 @@ export class ChartTest {
 
     // 리사이징 이벤트 리스너 등록
     window.addEventListener("resize", this.resizeListener);
-
-    console.log("차트 리사이징 리스너 설정 완료");
   }
 
   // 리사이징 처리 함수
   handleResize() {
     if (!this.chart) return;
 
-    // this.chart.resize();
     // 디바운싱 처리
     if (this.resizeDebounceTimer) {
       clearTimeout(this.resizeDebounceTimer);
@@ -1067,12 +1041,6 @@ export class ChartTest {
         // 컨텍스트 스케일링 적용
         this.overlayCtx.scale(2, 2);
       }
-
-      console.log(
-        `캔버스 크기 업데이트: ${containerWidth}x${containerHeight} (물리적 크기: ${
-          containerWidth * 2
-        }x${containerHeight * 2})`
-      );
     } catch (error) {
       console.error("캔버스 크기 업데이트 중 오류:", error);
     }
@@ -1143,21 +1111,21 @@ export class ChartTest {
     // 크로스헤어 업데이트 - 정확한 메서드 호출
     this.crosshair.updatePosition(x, y);
 
-    // 차트 영역 확인
-    const chartArea = this.chart.chartArea;
-    if (
-      chartArea &&
-      x >= chartArea.left &&
-      x <= chartArea.right &&
-      y >= chartArea.top &&
-      y <= chartArea.bottom
-    ) {
-      // 가격 및 시간 값 계산
-      const xValue = this.chart.scales.x.getValueForPixel(x);
-      const yValue = this.chart.scales.y.getValueForPixel(y);
+    // // 차트 영역 확인
+    // const chartArea = this.chart.chartArea;
+    // if (
+    //   chartArea &&
+    //   x >= chartArea.left &&
+    //   x <= chartArea.right &&
+    //   y >= chartArea.top &&
+    //   y <= chartArea.bottom
+    // ) {
+    //   // 가격 및 시간 값 계산
+    //   const xValue = this.chart.scales.x.getValueForPixel(x);
+    //   const yValue = this.chart.scales.y.getValueForPixel(y);
 
-      // 추가 작업이 필요한 경우 여기에 구현
-    }
+    //   // 추가 작업이 필요한 경우 여기에 구현
+    // }
   }
 
   // 마우스가 차트 영역을 떠날 때 호출되는 메서드

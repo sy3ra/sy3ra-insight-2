@@ -228,10 +228,6 @@ export class TypedDataManager {
     }
     this.capacity = newCapacity;
 
-    console.log(
-      `Expanding TypedDataManager capacity: ${oldCapacity} -> ${newCapacity}`
-    );
-
     // Create new arrays with the new capacity
     const newTimestamps = new Float64Array(newCapacity);
     const newOpens = new Float32Array(newCapacity);
@@ -334,63 +330,10 @@ export class TypedDataManager {
       }
       // Add support for color names if needed (would require a lookup table or canvas context)
     } catch (e) {
-      console.error("Error applying transparency:", e);
       result = color; // Fallback to original color on error
     }
 
     this._colorCache[cacheKey] = result;
     return result;
-  }
-
-  // --- Potentially Obsolete Methods (Review if needed elsewhere) ---
-
-  /**
-   * (Potentially Inefficient for Rendering)
-   * Returns data formatted for Chart.js datasets, creating new objects.
-   * Consider using getVisibleIndices and accessing data directly for rendering.
-   * @param {number} [startIdx] - Start index (inclusive).
-   * @param {number} [endIdx] - End index (exclusive).
-   * @returns {object} Chart.js data structure.
-   */
-  getChartJsData(startIdx = 0, endIdx = this.size) {
-    console.warn(
-      "getChartJsData creates new arrays and might be inefficient for frequent rendering updates."
-    );
-    if (
-      this.size === 0 ||
-      startIdx >= endIdx ||
-      startIdx < 0 ||
-      endIdx > this.size
-    ) {
-      return { labels: [], datasets: [{ label: "BTC/USDT Chart", data: [] }] };
-    }
-
-    const count = endIdx - startIdx;
-    const labels = new Array(count); // Consider if labels array is truly needed by Chart.js
-    const data = new Array(count);
-
-    for (let i = startIdx, j = 0; i < endIdx; i++, j++) {
-      labels[j] = this.timestamps[i]; // Often redundant if x is timestamp
-      data[j] = {
-        x: this.timestamps[i],
-        o: this.opens[i],
-        h: this.highs[i],
-        l: this.lows[i],
-        c: this.closes[i],
-        // v: this.volumes[i], // Volume data often goes in a separate dataset
-      };
-    }
-
-    // Example structure, adjust based on actual Chart.js configuration
-    return {
-      // labels: labels, // Often not needed if using time scale with 'x' property
-      datasets: [
-        {
-          label: "BTC/USDT Chart",
-          data: data,
-        },
-        // Potentially add volume dataset here if needed by this specific function
-      ],
-    };
   }
 }

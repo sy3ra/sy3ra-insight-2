@@ -41,7 +41,6 @@ export class ChartEventHandler {
   // 드로잉 도구 등록 메서드 추가
   registerDrawingTool(drawingTool) {
     this.drawingTool = drawingTool;
-    console.log("드로잉 도구가 차트 이벤트 핸들러에 등록되었습니다.");
   }
 
   // 드로잉 모드 활성화/비활성화 메서드 추가
@@ -53,9 +52,6 @@ export class ChartEventHandler {
       // this.originalState는 현재 코드에서 사용되지 않는 것으로 보임
       // 필요하다면 드래그 상태 등을 저장하는 로직 유지
       this.isDragging = false;
-      console.log("드로잉 모드 활성화: 차트 패닝/줌 비활성화됨");
-    } else {
-      console.log("드로잉 모드 비활성화: 차트 패닝/줌 상태 복원됨");
     }
   }
 
@@ -162,7 +158,8 @@ export class ChartEventHandler {
 
     try {
       if (!this.chart.canvas) {
-        // ... 오류 처리 ...
+        this.isDragging = false;
+        this.unsubscribeChartUpdate("mouse-move-error");
         return;
       }
 
@@ -179,6 +176,7 @@ export class ChartEventHandler {
 
       // *** 중요: 업데이트 필요 플래그 설정 ***
       this.chartInstance.chartNeedsUpdate = true;
+
       // *** Ticker 구독 요청 (드래그 중에는 계속 필요) ***
       this.subscribeChartUpdate("mouse-move");
     } catch (error) {
@@ -198,17 +196,13 @@ export class ChartEventHandler {
       // mouse-up 시에는 보통 추가적인 렌더링이 필요 없지만,
       // 관성 스크롤 등을 구현한다면 여기서 상태 변경 및 구독 유지가 필요할 수 있음
       // 현재 로직에서는 특별한 동작 없음. Idle 타이머가 구독 해제를 처리하도록 함.
-      // console.log("Mouse up, dragging stopped.");
-      // this.unsubscribeChartUpdate("mouse-up"); // <--- 호출하지 않음
     }
   }
 
   handleMouseLeave(e) {
-    // console.log("Mouse leave");
     if (this.isDragging) {
       // 드래그 중에 캔버스를 벗어난 경우 드래그 중지
       this.isDragging = false;
-      // console.log("Mouse leave while dragging, stopping drag.");
       // 이 경우에도 Idle 타이머가 구독 해제를 처리하도록 둘 수 있음
       // 또는 여기서 바로 해제 시도:
       // this.unsubscribeChartUpdate("mouse-leave-drag");
@@ -240,71 +234,58 @@ export class ChartEventHandler {
     }
   }
 
-  // 차트 업데이트 구독
+  // 차트 업데이트 구독 (Idle 타이머 클리어 추가)
   subscribeChartUpdate(source = "unknown") {
-    // *** Idle 타이머가 있다면 해제 (새 상호작용 시작) ***
     if (this.idleUnsubscribeTimer) {
       clearTimeout(this.idleUnsubscribeTimer);
       this.idleUnsubscribeTimer = null;
-      // console.log(`Idle timer cleared by ${source}`);
     }
 
     this.chartUpdateRefCount++;
-    // console.log(`Subscribing (${source}), RefCount: ${this.chartUpdateRefCount}`);
 
     if (!this.isChartUpdateSubscribed && this.chartUpdateRefCount > 0) {
-      // 조건 강화
       try {
-        tickerInstance.subscribe(this.boundUpdateCharts);
+        tickerInstance.subscribe(this.boundUpdateCharts, {
+          eventType: "chartUpdate",
+          priority: 0, // 높은 우선순위
+        });
         this.isChartUpdateSubscribed = true;
-        // console.log(`Ticker subscribed by ${source}`);
       } catch (error) {
         console.error("Error subscribing to ticker:", error);
-        // 구독 실패 시 상태 복구
         this.isChartUpdateSubscribed = false;
-        this.chartUpdateRefCount = Math.max(0, this.chartUpdateRefCount - 1); // 카운트 복구
+        this.chartUpdateRefCount = Math.max(0, this.chartUpdateRefCount - 1);
       }
     }
   }
 
-  // 차트 업데이트 구독 해제
+  // 차트 업데이트 구독 해제 (참조 카운트 기반, Idle 타이머 클리어 추가)
   unsubscribeChartUpdate(source = "unknown") {
     if (this.chartUpdateRefCount > 0) {
       this.chartUpdateRefCount--;
     }
-    // console.log(`Unsubscribing (${source}), RefCount: ${this.chartUpdateRefCount}`);
 
-    // 참조 카운트가 0이고, 현재 구독된 상태일 때만 실제 구독 해제
     if (this.chartUpdateRefCount === 0 && this.isChartUpdateSubscribed) {
       try {
         const unsubscribed = tickerInstance.unsubscribe(this.boundUpdateCharts);
         if (unsubscribed) {
           this.isChartUpdateSubscribed = false;
-          // console.log(`Ticker unsubscribed by ${source}`);
         } else {
-          // Ticker에 해당 콜백이 없었던 경우 (예: 이미 해제됨)
-          // console.warn(`Attempted to unsubscribe (${source}), but callback was not found in ticker.`);
           this.isChartUpdateSubscribed = false; // 상태 동기화
         }
       } catch (error) {
         console.error("Error unsubscribing from ticker:", error);
-        // 안전하게 상태 유지 시도 (구독된 상태로 둘 수 있음)
-        // this.isChartUpdateSubscribed = true;
-        // this.chartUpdateRefCount = 1; // 강제로 다시 구독 상태로 만들지 않도록 주의
       } finally {
-        // *** 구독 해제 시도 후 Idle 타이머 확실히 정리 ***
+        // *** 구독 해제 후 Idle 타이머 정리 ***
         if (this.idleUnsubscribeTimer) {
           clearTimeout(this.idleUnsubscribeTimer);
           this.idleUnsubscribeTimer = null;
-          // console.log("Idle timer cleared during unsubscribe.");
         }
       }
     }
   }
 
-  // 차트 업데이트 메서드 (Ticker 콜백)
+  // 차트 업데이트 메서드 (Ticker 콜백, Idle 타이머 설정 로직 포함)
   updateCharts(timestamp) {
-    // *** Idle 타이머가 있다면 해제 (업데이트 시작 전) ***
     if (this.idleUnsubscribeTimer) {
       clearTimeout(this.idleUnsubscribeTimer);
       this.idleUnsubscribeTimer = null;
@@ -315,51 +296,36 @@ export class ChartEventHandler {
       return;
     }
 
+    let didRender = false; // 렌더링 발생 여부 플래그
     try {
-      // 차트 유효성 검사 (기존 유지)
       if (!this.chartInstance.chart.data?.datasets?.[0]) {
         console.warn("Chart data invalid in updateCharts");
-        // 필요 시 여기서도 구독 해제 고려
-        // this.unsubscribeChartUpdate("invalid-data-in-tick");
         return;
       }
 
-      // 업데이트 예약 상태이면 차트 렌더링
       if (this.chartInstance.chartNeedsUpdate) {
-        // console.log("Rendering chart in tick...");
-        this.chartInstance.renderAllCharts(); // 내부에서 chart.update() 호출
-
-        // *** 중요: 렌더링 후 플래그 false로 설정 ***
+        this.chartInstance.renderAllCharts();
         this.chartInstance.chartNeedsUpdate = false;
-
-        // *** 중요: Idle 타이머 설정 (이 프레임 이후 업데이트 없으면 구독 해제 예약) ***
-        this.idleUnsubscribeTimer = setTimeout(() => {
-          // console.log("Idle timeout reached, attempting unsubscribe.");
-          // 참조 카운트가 0일 때만 실제 구독 해제가 이루어짐
-          this.unsubscribeChartUpdate("idle-timer");
-          this.idleUnsubscribeTimer = null;
-        }, this.IDLE_TIMEOUT_MS);
+        didRender = true; // 렌더링 발생 표시
       } else {
-        // 업데이트가 필요 없었지만 tick이 호출된 경우
-        // (예: 상호작용은 있었으나 실제 렌더링은 필요 없었던 경우, 또는 이전 프레임의 idle 타이머 설정 직후 새 이벤트 발생)
-        // 이 경우에도 다시 Idle 타이머를 설정하여 불필요한 tick 방지
-        // console.log("No chart update needed, setting idle timer anyway.");
-        this.idleUnsubscribeTimer = setTimeout(() => {
-          // console.log("Idle timeout reached after no-update tick, attempting unsubscribe.");
-          this.unsubscribeChartUpdate("idle-timer-no-update");
-          this.idleUnsubscribeTimer = null;
-        }, this.IDLE_TIMEOUT_MS);
+        // 크로스헤어만 업데이트해야 하는 경우 등 (renderAllCharts 호출 안 함)
+        // 예: this.chartInstance.crosshair?.draw(); // 필요하다면 여기서 크로스헤어만 다시 그림
       }
     } catch (error) {
       console.error("차트 업데이트 중 오류 발생:", error);
-      // 오류 발생 시 안전하게 구독 해제 시도
-      this.unsubscribeChartUpdate("update-error");
+      this.unsubscribeChartUpdate("update-error"); // 오류 시 구독 해제 시도
+      return; // 오류 발생 시 타이머 설정 방지
+    } finally {
+      // *** Idle 타이머 설정: 렌더링이 발생했거나, 아직 구독 해제되지 않았다면 다음 유휴 상태 감지 예약 ***
+      // 참조 카운트가 0보다 크면 아직 다른 곳에서 구독 해제를 기다리고 있을 수 있음
+      if (this.chartUpdateRefCount > 0 || this.isChartUpdateSubscribed) {
+        // 구독 중일 때만 타이머 설정
+        this.idleUnsubscribeTimer = setTimeout(() => {
+          this.unsubscribeChartUpdate("idle-timer");
+          this.idleUnsubscribeTimer = null;
+        }, this.IDLE_TIMEOUT_MS);
+      }
     }
-  }
-
-  // synchronizeChartsAfterEvent 메서드는 더 이상 필요 없음 (내용 비움 또는 삭제)
-  synchronizeChartsAfterEvent() {
-    // console.log("synchronizeChartsAfterEvent called (now does nothing).");
   }
 
   // 리소스 해제
@@ -367,14 +333,14 @@ export class ChartEventHandler {
     // Ticker 구독 해제
     if (this.isChartUpdateSubscribed) {
       tickerInstance.unsubscribe(this.boundUpdateCharts);
-      this.isChartUpdateSubscribed = false;
-      this.chartUpdateRefCount = 0;
     }
     // 타이머 해제
     if (this.idleUnsubscribeTimer) {
       clearTimeout(this.idleUnsubscribeTimer);
-      this.idleUnsubscribeTimer = null;
     }
+    this.isChartUpdateSubscribed = false;
+    this.chartUpdateRefCount = 0;
+    this.idleUnsubscribeTimer = null;
 
     if (this.chart?.canvas) {
       const canvas = this.chart.canvas;
@@ -387,6 +353,5 @@ export class ChartEventHandler {
       canvas.removeEventListener("mouseleave", this.handleMouseLeave);
     }
     // 다른 리소스 해제 코드...
-    console.log("ChartEventHandler disposed.");
   }
 }

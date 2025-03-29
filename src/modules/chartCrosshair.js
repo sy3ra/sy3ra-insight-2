@@ -46,9 +46,9 @@ export class ChartCrosshair {
 
     // 위치가 변경되지 않았다면 다시 그리지 않음
     const { ctx, x, y, previousX, previousY } = this;
-    if (x === previousX && y === previousY) {
-      return;
-    }
+    // if (x === previousX && y === previousY) {
+    //   return;
+    // }
 
     // 캔버스를 지우고 새로 그리기
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -267,7 +267,8 @@ export class ChartCrosshair {
   subscribeToTicker() {
     if (!this.isSubscribed) {
       tickerInstance.subscribe(this.boundDraw, {
-        throttleMs: 8, // 스로틀링 적용
+        priority: 10, // 높은 우선순위
+        throttleMs: 0, // 스로틀링 적용
         eventType: "chartCrosshair", // 고유한 이벤트 타입 사용
       });
       this.isSubscribed = true;
@@ -285,5 +286,6 @@ export class ChartCrosshair {
   mouseLeave() {
     this.isVisible = false;
     this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+    this.unsubscribeFromTicker();
   }
 }
