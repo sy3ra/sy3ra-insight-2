@@ -1,0 +1,706 @@
+{
+  "entities": [
+    {
+      "type": "entity",
+      "name": "LineUtils",
+      "entityType": "Module",
+      "observations": [
+        "Utility module for line drawing functions",
+        "Located in src/utilities/lineUtils.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "LineUtils.calculateSlope",
+      "entityType": "Function",
+      "observations": [
+        "Calculates the slope between two points",
+        "Takes parameters: startX, startY, endX, endY",
+        "Returns Infinity for vertical lines",
+        "Located in src/utilities/lineUtils.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "LineUtils.calculateDirection",
+      "entityType": "Function",
+      "observations": [
+        "Determines the direction between two points",
+        "Returns an object with x and y properties indicating direction",
+        "x: 1 for right, -1 for left, 0 for same x-coordinate",
+        "y: 1 for down, -1 for up, 0 for same y-coordinate",
+        "Located in src/utilities/lineUtils.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "LineUtils.drawLine",
+      "entityType": "Function",
+      "observations": [
+        "Draws a line between two points on a canvas context",
+        "Supports optional clipping to chart area",
+        "Takes parameters: ctx, startX, startY, endX, endY, color, width, chartArea",
+        "Located in src/utilities/lineUtils.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "LineUtils.drawAnchorPoint",
+      "entityType": "Function",
+      "observations": [
+        "Draws an anchor point (circle) at specified coordinates",
+        "Takes parameters: ctx, x, y, radius, color",
+        "Located in src/utilities/lineUtils.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "EventManager",
+      "entityType": "Class",
+      "observations": [
+        "Centralizes event handling across the application",
+        "Located in src/utilities/eventManager.js",
+        "Manages event listeners and event distribution"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "EventTypes",
+      "entityType": "Enum",
+      "observations": [
+        "Defines constants for event types",
+        "Located in src/utilities/eventManager.js",
+        "Includes mouse events, resize events, and drawing-specific events"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "EventManager.constructor",
+      "entityType": "Method",
+      "observations": [
+        "Initializes event manager with chart canvas",
+        "Sets up initial state and event storage",
+        "Creates listeners cache for cleanup",
+        "Located in src/utilities/eventManager.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "EventManager.addEventListener",
+      "entityType": "Method",
+      "observations": [
+        "Registers event listener for specific event type",
+        "Stores callback for event distribution",
+        "Handles multiple listeners for same event type",
+        "Located in src/utilities/eventManager.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "EventManager.removeEventListener",
+      "entityType": "Method",
+      "observations": [
+        "Unregisters event listener for specific event type",
+        "Cleans up event callbacks",
+        "Removes DOM listeners when no callbacks remain",
+        "Located in src/utilities/eventManager.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "EventManager.handleEvent",
+      "entityType": "Method",
+      "observations": [
+        "Central event handler for all registered DOM events",
+        "Distributes events to appropriate callbacks",
+        "Normalizes event data for consistent interface",
+        "Located in src/utilities/eventManager.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "EventManager.updateChartInstance",
+      "entityType": "Method",
+      "observations": [
+        "Updates chart instance reference",
+        "Called after chart instance is created",
+        "Ensures events can access chart functionality",
+        "Located in src/utilities/eventManager.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Ticker",
+      "entityType": "Class",
+      "observations": [
+        "Manages animation frame timing for smooth rendering",
+        "Provides subscription-based animation system",
+        "Optimizes performance by batching updates",
+        "Located in src/modules/ticker.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "tickerInstance",
+      "entityType": "Singleton",
+      "observations": [
+        "Instance of Ticker class",
+        "Located in src/modules/ticker.js",
+        "Manages animation frame updates and callback scheduling"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Ticker.subscribe",
+      "entityType": "Method",
+      "observations": [
+        "Registers a callback for animation frame updates",
+        "Returns the Ticker instance for method chaining",
+        "Used by chart components for animation",
+        "Located in src/modules/ticker.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Ticker.unsubscribe",
+      "entityType": "Method",
+      "observations": [
+        "Removes a callback from animation frame updates",
+        "Returns success status boolean",
+        "Used when components no longer need updates",
+        "Located in src/modules/ticker.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Ticker.tick",
+      "entityType": "Method",
+      "observations": [
+        "Core method called by requestAnimationFrame",
+        "Executes all registered callbacks",
+        "Manages callback frequency through throttling",
+        "Located in src/modules/ticker.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool",
+      "entityType": "Class",
+      "observations": [
+        "Implements drawing tools for chart markup",
+        "Uses lineUtils for calculating line directions and slopes",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.constructor",
+      "entityType": "Method",
+      "observations": [
+        "Initializes drawing tool with container, chart instance, and canvases",
+        "Sets up event handlers and tool panel",
+        "Initializes drawing state variables",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.previewExtendedLine",
+      "entityType": "Method",
+      "observations": [
+        "Previews an extended line during drawing",
+        "Uses calculateSlope and calculateDirection from lineUtils",
+        "Shows the line extending to chart boundaries",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.previewRay",
+      "entityType": "Method",
+      "observations": [
+        "Previews a ray line during drawing",
+        "Uses calculateSlope and calculateDirection from lineUtils",
+        "Shows line extending from start point in one direction",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.drawLine",
+      "entityType": "Method",
+      "observations": [
+        "Draws a standard line between two points",
+        "Uses calculateSlope and calculateDirection for edge cases",
+        "Handles chart area boundary detection",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.drawLineOnCanvas",
+      "entityType": "Method",
+      "observations": [
+        "Central drawing method for all line types",
+        "Uses calculateSlope and calculateDirection internally",
+        "Supports different line types (ray, extended, horizontal, vertical)",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.setupMouseListeners",
+      "entityType": "Method",
+      "observations": [
+        "Sets up or removes mouse event listeners",
+        "Connects to EventManager via MainCanvas",
+        "Handles mouse move and click events",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.subscribeToFinishDrawLine",
+      "entityType": "Method",
+      "observations": [
+        "Subscribes to ticker for line drawing updates",
+        "Registers finishDrawLine as a callback",
+        "Uses tickerInstance",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "DrawingTool.unsubscribeFromFinishDrawLine",
+      "entityType": "Method",
+      "observations": [
+        "Unsubscribes from ticker",
+        "Removes finishDrawLine callback",
+        "Uses tickerInstance",
+        "Located in src/modules/drawingTool.js"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "ChartTest",
+      "entityType": "Class",
+      "observations": [
+        "Main chart implementation class",
+        "Handles rendering of candlestick charts",
+        "Located in src/components/ChartTest.js",
+        "Responsible for chart initialization and data rendering"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "ChartTest.constructor",
+      "entityType": "Method",
+      "observations": [
+        "Initializes the chart instance with configuration",
+        "Sets up canvas elements and contexts",
+        "Located in src/components/ChartTest.js",
+        "Creates and initializes rendering pipelines"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "ChartTest.initializeComponents",
+      "entityType": "Method",
+      "observations": [
+        "Sets up chart components like axes, grid, and price indicators",
+        "Initializes drawing tools and event handlers",
+        "Located in src/components/ChartTest.js",
+        "Connects various chart components together"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "ChartTest.render",
+      "entityType": "Method",
+      "observations": [
+        "Main rendering method for the chart",
+        "Clears and redraws all chart elements",
+        "Located in src/components/ChartTest.js",
+        "Optimizes rendering performance through caching"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Chart",
+      "entityType": "Class",
+      "observations": [
+        "Core chart abstraction class",
+        "Provides common chart functionality",
+        "Located in src/core/Chart.js",
+        "Handles responsive sizing and basic chart layout"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Chart.constructor",
+      "entityType": "Method",
+      "observations": [
+        "Creates basic chart structure",
+        "Initializes chart properties and state",
+        "Located in src/core/Chart.js",
+        "Sets up responsive behavior"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Chart.updateDimensions",
+      "entityType": "Method",
+      "observations": [
+        "Recalculates chart dimensions on resize",
+        "Updates internal sizing properties",
+        "Located in src/core/Chart.js",
+        "Ensures chart properly scales to container"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Main",
+      "entityType": "Module",
+      "observations": [
+        "Application entry point",
+        "Initializes chart components and services",
+        "Located in src/Main.js",
+        "Configures global settings and event listeners"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Main.initialize",
+      "entityType": "Function",
+      "observations": [
+        "Entry point for application initialization",
+        "Creates chart instances and sets up global services",
+        "Located in src/Main.js",
+        "Binds event listeners for application-wide events"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "Main.loadConfiguration",
+      "entityType": "Function",
+      "observations": [
+        "Loads chart configuration from user settings or defaults",
+        "Processes and validates configuration data",
+        "Located in src/Main.js",
+        "Provides configuration to chart components"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "MainCanvas",
+      "entityType": "Class",
+      "observations": [
+        "Main class responsible for creating and managing multiple canvas elements",
+        "Initializes different canvases, contexts, event managers, and components",
+        "Located in src/main.js",
+        "Creates chart, crosshair, overlay, and drawing canvases"
+      ]
+    },
+    {
+      "type": "entity",
+      "name": "MainCanvas.constructor",
+      "entityType": "Method",
+      "observations": [
+        "Initializes MainCanvas with parent element",
+        "Creates empty overlaysArray",
+        "Calls initialization methods in sequence",
+        "Located in src/main.js"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "type": "relation",
+      "from": "LineUtils",
+      "to": "LineUtils.calculateSlope",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "LineUtils",
+      "to": "LineUtils.calculateDirection",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "LineUtils",
+      "to": "LineUtils.drawLine",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "LineUtils",
+      "to": "LineUtils.drawAnchorPoint",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "EventManager",
+      "to": "EventManager.constructor",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "EventManager",
+      "to": "EventManager.addEventListener",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "EventManager",
+      "to": "EventManager.removeEventListener",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "EventManager",
+      "to": "EventManager.handleEvent",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "EventManager",
+      "to": "EventManager.updateChartInstance",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "Ticker",
+      "to": "Ticker.subscribe",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "Ticker",
+      "to": "Ticker.unsubscribe",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "Ticker",
+      "to": "Ticker.tick",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "tickerInstance",
+      "to": "Ticker",
+      "relationType": "instanceOf"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.constructor",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.previewExtendedLine",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.previewRay",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.drawLine",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.drawLineOnCanvas",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.setupMouseListeners",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.subscribeToFinishDrawLine",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "DrawingTool.unsubscribeFromFinishDrawLine",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "LineUtils",
+      "relationType": "imports"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "tickerInstance",
+      "relationType": "imports"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool",
+      "to": "EventTypes",
+      "relationType": "imports"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.previewExtendedLine",
+      "to": "LineUtils.calculateSlope",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.previewRay",
+      "to": "LineUtils.calculateSlope",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.previewRay",
+      "to": "LineUtils.calculateDirection",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.drawLine",
+      "to": "LineUtils.calculateSlope",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.drawLine",
+      "to": "LineUtils.calculateDirection",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.drawLineOnCanvas",
+      "to": "LineUtils.calculateSlope",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.drawLineOnCanvas",
+      "to": "LineUtils.calculateDirection",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.setupMouseListeners",
+      "to": "EventTypes",
+      "relationType": "uses"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.subscribeToFinishDrawLine",
+      "to": "tickerInstance.subscribe",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "DrawingTool.unsubscribeFromFinishDrawLine",
+      "to": "tickerInstance.unsubscribe",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "ChartTest",
+      "to": "ChartTest.constructor",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "ChartTest",
+      "to": "ChartTest.initializeComponents",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "ChartTest",
+      "to": "ChartTest.render",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "ChartTest.constructor",
+      "to": "ChartTest.initializeComponents",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "Chart",
+      "to": "Chart.constructor",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "Chart",
+      "to": "Chart.updateDimensions",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "Main",
+      "to": "Main.initialize",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "Main",
+      "to": "Main.loadConfiguration",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "Main.initialize",
+      "to": "Main.loadConfiguration",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "Main.initialize",
+      "to": "Chart",
+      "relationType": "instantiates"
+    },
+    {
+      "type": "relation",
+      "from": "MainCanvas.constructor",
+      "to": "Main.loadConfiguration",
+      "relationType": "calls"
+    },
+    {
+      "type": "relation",
+      "from": "MainCanvas",
+      "to": "MainCanvas.constructor",
+      "relationType": "contains"
+    },
+    {
+      "type": "relation",
+      "from": "MainCanvas",
+      "to": "ChartTest",
+      "relationType": "instantiates"
+    },
+    {
+      "type": "relation",
+      "from": "MainCanvas",
+      "to": "EventManager",
+      "relationType": "uses"
+    }
+  ]
+}

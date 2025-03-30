@@ -14,6 +14,11 @@ export class ChartCrosshair {
     this.boundDraw = this.draw.bind(this);
     this.isSubscribed = false;
 
+    // 마우스 움직임 감지 관련 변수
+    this.lastMoveTime = 0;
+    this.idleCheckInterval = null;
+    this.IDLE_TIMEOUT_MS = 200; // 200ms 동안 움직임 없으면 구독 해제
+
     // 스타일 설정
     this.initializeStyles();
   }
@@ -38,30 +43,19 @@ export class ChartCrosshair {
   }
 
   draw() {
-    // 크로스헤어가 표시되지 않아야 하는 경우 구독 해제
-    if (!this.isVisible) {
-      this.unsubscribeFromTicker();
+    // 크로스헤어가 표시되지 않아야 하는 경우
+    if (!this.isVisible || !this.isSubscribed) {
       return;
     }
 
-    // 위치가 변경되지 않았다면 다시 그리지 않음
-    const { ctx, x, y, previousX, previousY } = this;
-    // if (x === previousX && y === previousY) {
-    //   return;
-    // }
-
     // 캔버스를 지우고 새로 그리기
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
 
     // 크로스헤어 그리기
-    this.drawCrosshair(x, y);
+    this.drawCrosshair(this.x, this.y);
 
     // 값 레이블 그리기
-    this.drawValueLabels(x, y);
-
-    // 이전 위치 업데이트
-    this.previousX = x;
-    this.previousY = y;
+    this.drawValueLabels(this.x, this.y);
   }
 
   // 크로스헤어 그리기 메서드
@@ -208,10 +202,23 @@ export class ChartCrosshair {
   }
 
   updatePosition(x, y) {
+    // 위치가 변경되지 않았으면 리턴
+    if (this.x === x && this.y === y) {
+      return;
+    }
+
+    // 위치 업데이트
+    this.x = x;
+    this.y = y;
+
+    // 마우스 움직임 시간 업데이트
+    this.lastMoveTime = Date.now();
+
     // 차트 영역 확인
     const chartArea = this.chart.chartArea;
     if (!chartArea) {
       this.isVisible = false;
+      this.clearAndUnsubscribe();
       return;
     }
 
@@ -229,63 +236,112 @@ export class ChartCrosshair {
     const yLabelRight = yLabelX + yLabelWidth / 2;
 
     // 마우스가 X축 레이블 영역에 있는지 확인
-    const isInXLabelArea = y >= xLabelTop && y <= xLabelBottom;
+    const isInXLabelArea = this.y >= xLabelTop && this.y <= xLabelBottom;
 
     // 마우스가 Y축 레이블 영역에 있는지 확인
-    const isInYLabelArea = x >= yLabelLeft && x <= yLabelRight;
+    const isInYLabelArea = this.x >= yLabelLeft && this.x <= yLabelRight;
 
     // 마우스가 레이블 영역에 있으면 크로스헤어 숨기기
     if (isInXLabelArea || isInYLabelArea) {
       this.isVisible = false;
-      this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+      this.clearAndUnsubscribe();
       return;
     }
 
     // 마우스가 차트 영역 내에 있는지 확인
-    const isInChartArea =
-      x >= chartArea.left &&
-      x <= chartArea.right &&
-      y >= chartArea.top &&
-      y <= chartArea.bottom;
-
-    // 차트 영역 내에 있을 때만 크로스헤어 표시
-    this.isVisible = isInChartArea;
-
-    // 위치 업데이트
-    this.x = x;
-    this.y = y;
+    const wasVisible = this.isVisible;
+    this.isVisible =
+      this.x >= chartArea.left &&
+      this.x <= chartArea.right &&
+      this.y >= chartArea.top &&
+      this.y <= chartArea.bottom;
 
     // 크로스헤어가 표시되어야 하면 티커 구독
     if (this.isVisible) {
       this.subscribeToTicker();
-    } else {
-      this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+
+      // 움직임 감지 타이머 설정
+      this.setupIdleCheck();
+    } else if (wasVisible && !this.isVisible) {
+      this.clearAndUnsubscribe();
     }
+  }
+
+  // 마우스 움직임 감지 타이머 설정
+  setupIdleCheck() {
+    // 기존 타이머 제거
+    if (this.idleCheckInterval) {
+      clearInterval(this.idleCheckInterval);
+    }
+
+    // 새 타이머 설정
+    this.idleCheckInterval = setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastMove = now - this.lastMoveTime;
+
+      // 일정 시간 동안 움직임이 없으면 구독 해제
+      if (timeSinceLastMove > this.IDLE_TIMEOUT_MS) {
+        if (this.isSubscribed) {
+          console.log(
+            `마우스 움직임 없음 (${timeSinceLastMove}ms): 크로스헤어 구독 해제`
+          );
+          // 구독만 해제하고 크로스헤어는 유지
+          this.unsubscribeOnly();
+        }
+
+        // 타이머 제거
+        clearInterval(this.idleCheckInterval);
+        this.idleCheckInterval = null;
+      }
+    }, this.IDLE_TIMEOUT_MS / 2); // 타임아웃의 절반 간격으로 체크
+  }
+
+  // 화면 지우고 구독 해제
+  clearAndUnsubscribe() {
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+    this.unsubscribeFromTicker();
+  }
+
+  // 구독만 해제하고 화면은 유지
+  unsubscribeOnly() {
+    this.unsubscribeFromTicker();
   }
 
   // 티커에 구독
   subscribeToTicker() {
     if (!this.isSubscribed) {
       tickerInstance.subscribe(this.boundDraw, {
-        priority: 10, // 높은 우선순위
-        throttleMs: 0, // 스로틀링 적용
-        eventType: "chartCrosshair", // 고유한 이벤트 타입 사용
+        priority: 10,
+        throttleMs: 0,
+        eventType: "chartCrosshair",
       });
+      console.log("크로스헤어 구독 시작");
       this.isSubscribed = true;
+
+      // 처음 구독 시 한 번 그려줌
+      this.draw();
     }
   }
 
   // 티커 구독 해제
   unsubscribeFromTicker() {
     if (this.isSubscribed) {
-      tickerInstance.unsubscribe(this.boundDraw);
+      tickerInstance.unsubscribe(this.boundDraw, {
+        eventType: "chartCrosshair",
+      });
+      console.log("크로스헤어 구독 해제");
       this.isSubscribed = false;
+
+      // 마우스 움직임 감지 타이머 제거
+      if (this.idleCheckInterval) {
+        clearInterval(this.idleCheckInterval);
+        this.idleCheckInterval = null;
+      }
     }
   }
 
   mouseLeave() {
     this.isVisible = false;
-    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
-    this.unsubscribeFromTicker();
+    this.clearAndUnsubscribe();
   }
 }

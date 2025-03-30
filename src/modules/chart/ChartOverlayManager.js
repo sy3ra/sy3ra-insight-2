@@ -53,10 +53,10 @@ export class ChartOverlayManager {
     });
 
     // 초기 구독 상태 확인 및 설정 (지연 실행)
-    setTimeout(() => {
-      console.log("지연된 구독 상태 초기화 실행");
-      this._updateSubscriptionState();
-    }, 100);
+    // setTimeout(() => {
+    //   console.log("지연된 구독 상태 초기화 실행");
+    //   this._updateSubscriptionState();
+    // }, 100);
   }
 
   // 마우스 이벤트에서 캔버스 상대 좌표 계산

@@ -82,6 +82,7 @@ class Ticker {
 
     // 구독자가 있을 때만 다음 프레임 예약
     if (this.subscribers.size > 0 && this.isRunning) {
+      // console.log("requestAnimationFrame", this.subscribers);
       requestAnimationFrame(this.tick);
     } else {
       this.isRunning = false;
