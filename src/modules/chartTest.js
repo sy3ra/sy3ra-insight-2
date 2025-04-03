@@ -54,6 +54,10 @@ export class ChartTest {
     this.lastValidMin = null;
     this.lastValidMax = null;
 
+    // 캔버스 크기 캐싱 추가
+    this._canvasSizeCache = { width: 0, height: 0 };
+    this._devicePixelRatio = window.devicePixelRatio || 1;
+
     // API 데이터 한계 도달 여부
     this.reachedApiLimit = false;
 
@@ -136,13 +140,6 @@ export class ChartTest {
       //초기 렌더링 요청
       this.chartNeedsUpdate = true;
       this.eventHandler.subscribeChartUpdate("initialize");
-
-      // 초기 스크롤 체크 실행
-      if (this.afterUpdateCallbacks && this.afterUpdateCallbacks.length > 0) {
-        for (const callback of this.afterUpdateCallbacks) {
-          callback();
-        }
-      }
 
       console.log("통합 차트 인스턴스가 생성되었습니다.");
     } catch (error) {
@@ -360,7 +357,7 @@ export class ChartTest {
           y: {
             position: "right",
             beginAtZero: false,
-            weight: 80, // 캔들 차트의 높이를 전체 차트의 80%로 설정
+            // weight: 80, // 캔들 차트의 높이를 전체 차트의 80%로 설정
             ticks: {
               color: "#d4d4d4",
               callback: function (value) {
@@ -381,9 +378,9 @@ export class ChartTest {
               display: true,
               drawOnChartArea: true,
             },
-            afterFit: function (scaleInstance) {
-              scaleInstance.width = 90;
-            },
+            // afterFit: function (scaleInstance) {
+            //   scaleInstance.width = 90;
+            // },
           },
           // 볼륨 차트를 위한 Y축 추가
           volume: {
@@ -398,16 +395,16 @@ export class ChartTest {
               display: false,
             },
             ticks: {
-              display: true,
+              display: false,
               color: "#d4d4d4",
-              callback: function (value) {
-                if (value >= 1000000) {
-                  return (value / 1000000).toFixed(1) + "M";
-                } else if (value >= 1000) {
-                  return (value / 1000).toFixed(1) + "K";
-                }
-                return value;
-              },
+              // callback: function (value) {
+              //   if (value >= 1000000) {
+              //     return (value / 1000000).toFixed(1) + "M";
+              //   } else if (value >= 1000) {
+              //     return (value / 1000).toFixed(1) + "K";
+              //   }
+              //   return value;
+              // },
             },
           },
         },
@@ -784,20 +781,30 @@ export class ChartTest {
       const xScale = this.chart.scales.x;
       const minVisibleTime = xScale.min;
       const maxVisibleTime = xScale.max;
+
+      // const debugBefore_GET_VISIBLE_DATA = performance.now();
+
       // 성능 측정 주석 제거하고 코드 정리
       const { candles: visibleCandles, volumes: visibleVolumes } =
         this._getVisibleData(minVisibleTime, maxVisibleTime);
+
+      // const debugAfter_GET_VISIBLE_DATA = performance.now();
 
       // 기존 객체를 직접 수정하는 것이 더 효율적일 수 있으나,
       // Chart.js는 데이터 배열 참조가 바뀌어야 변경을 감지하는 경우가 많음
       this.chart.data.datasets[0].data = visibleCandles;
       this.chart.data.datasets[1].data = visibleVolumes;
 
+      // const debugAfter_SET_VISIBLE_DATA = performance.now();
+
       // *** 3. 메인 차트 업데이트 (resize + update) ***
       // 리사이즈는 실제 크기 변경 시에만 호출하는 것이 더 효율적 (handleResize에서 처리)
       this.chart.resize(); // 필요시에만 호출하도록 이동 고려
 
+      // const debugAfter_RESIZE = performance.now();
+
       this.chart.update("none"); // 애니메이션 없이 업데이트
+      // const debugAfter_UPDATE = performance.now();
 
       // *** 4. 오버레이 및 크로스헤어 렌더링 (필요시) ***
       this.renderOverlays(); // 오버레이 다시 그리기
@@ -806,19 +813,12 @@ export class ChartTest {
       this.performance.updateRenderTimestamp();
       this.lastRenderTimestamp = this.performance.lastRenderTimestamp;
 
+      // const debugAfter_UPDATE_RENDER_TIMESTAMP = performance.now();
+
       // 차트 업데이트 상태 리셋
       this.chartNeedsUpdate = false;
 
-      // 스크롤 트리거 콜백 실행
-      if (this.afterUpdateCallbacks && this.afterUpdateCallbacks.length > 0) {
-        for (const callback of this.afterUpdateCallbacks) {
-          try {
-            callback();
-          } catch (error) {
-            console.error("차트 업데이트 콜백 실행 중 오류:", error);
-          }
-        }
-      }
+      // const debugAfter_AFTER_UPDATE_CALLBACKS = performance.now();
     } catch (error) {
       console.error("차트 렌더링 중 오류 발생:", error);
       // 오류가 발생하면 차트를 다시 초기화
@@ -984,7 +984,7 @@ export class ChartTest {
     }, 100); // 100ms 디바운스
   }
 
-  // 캔버스 크기 업데이트
+  // 캔버스 크기 업데이트 (최적화 버전)
   updateCanvasSizes() {
     try {
       if (!this.chart || !this.chart.canvas) {
@@ -1002,44 +1002,53 @@ export class ChartTest {
         return;
       }
 
-      // 컨테이너 크기 가져오기
+      // 컨테이너 크기를 한 번만 읽음
       const containerWidth = parentElement.clientWidth;
       const containerHeight = parentElement.clientHeight;
 
-      // 메인 차트 캔버스 크기 업데이트 (2배 크기로 설정)
-      if (this.chartCtx && this.chartCtx.canvas) {
-        const canvas = this.chartCtx.canvas;
-        canvas.width = containerWidth * 2;
-        canvas.height = containerHeight * 2;
-        // 스타일로 실제 표시 크기 설정
-        canvas.style.width = `${containerWidth}px`;
-        canvas.style.height = `${containerHeight}px`;
-        // 컨텍스트 스케일링 적용
-        this.chartCtx.scale(2, 2);
+      // 이전 크기와 같으면 업데이트 건너뛰기
+      if (
+        this._canvasSizeCache.width === containerWidth &&
+        this._canvasSizeCache.height === containerHeight
+      ) {
+        return;
       }
 
-      // 크로스헤어 캔버스 크기 업데이트 (2배 크기로 설정)
-      if (this.crosshairCtx && this.crosshairCtx.canvas) {
-        const canvas = this.crosshairCtx.canvas;
-        canvas.width = containerWidth * 2;
-        canvas.height = containerHeight * 2;
-        // 스타일로 실제 표시 크기 설정
-        canvas.style.width = `${containerWidth}px`;
-        canvas.style.height = `${containerHeight}px`;
-        // 컨텍스트 스케일링 적용
-        this.crosshairCtx.scale(2, 2);
-      }
+      // 새 크기 캐시
+      this._canvasSizeCache.width = containerWidth;
+      this._canvasSizeCache.height = containerHeight;
 
-      // 오버레이 캔버스 크기 업데이트 (2배 크기로 설정)
-      if (this.overlayCtx && this.overlayCtx.canvas) {
-        const canvas = this.overlayCtx.canvas;
-        canvas.width = containerWidth * 2;
-        canvas.height = containerHeight * 2;
-        // 스타일로 실제 표시 크기 설정
-        canvas.style.width = `${containerWidth}px`;
-        canvas.style.height = `${containerHeight}px`;
-        // 컨텍스트 스케일링 적용
-        this.overlayCtx.scale(2, 2);
+      // 현재 디바이스 픽셀 비율 확인
+      const pixelRatio = window.devicePixelRatio || 1;
+      const scaleRatio = 2; // 고정 스케일 비율 유지 (기존 코드와 일관성)
+
+      // 빠른 참조를 위한 캔버스 배열 생성
+      const canvasContexts = [
+        { ctx: this.chartCtx, canvas: this.chartCtx?.canvas },
+        { ctx: this.crosshairCtx, canvas: this.crosshairCtx?.canvas },
+        { ctx: this.overlayCtx, canvas: this.overlayCtx?.canvas },
+      ];
+
+      // requestAnimationFrame을 사용하여 레이아웃 변경 일괄 처리
+      console.log("updateCanvasSizes");
+      for (const item of canvasContexts) {
+        if (!item.ctx || !item.canvas) continue;
+
+        const canvas = item.canvas;
+
+        // 캔버스의 내부 크기 설정 (물리적 픽셀)
+        canvas.width = containerWidth * scaleRatio;
+        canvas.height = containerHeight * scaleRatio;
+
+        // CSS 크기 일괄 설정 (한 번의 리플로우만 발생)
+        Object.assign(canvas.style, {
+          width: `${containerWidth}px`,
+          height: `${containerHeight}px`,
+        });
+
+        // 컨텍스트 초기화 및 한 번만 스케일링
+        item.ctx.setTransform(1, 0, 0, 1, 0, 0); // 변환 초기화
+        item.ctx.scale(scaleRatio, scaleRatio);
       }
     } catch (error) {
       console.error("캔버스 크기 업데이트 중 오류:", error);
@@ -1099,6 +1108,26 @@ export class ChartTest {
     this.rectPool = null;
     this.eventInfoPool = null;
     this.arrayPool = null;
+
+    // 임시 객체와 배열 정리
+    this._tempPoint = null;
+    this._tempCandle = null;
+    this._tempDataArray = null;
+    this._tempVolumePoint = null;
+    this._tempCandleArray = null;
+    this._tempMoreDataArray = null;
+    this._visibleDataCache = null;
+    this._tempValuePoint = null;
+    this._tempPixelPoint = null;
+    this._canvasSizeCache = null;
+
+    // 캔버스 컨텍스트 참조 제거
+    this.chartCtx = null;
+    this.crosshairCtx = null;
+    this.overlayCtx = null;
+
+    // 성능 관리 객체 참조 제거
+    this.performance = null;
   }
 
   // EventManager에서 호출되는 마우스 위치 업데이트 메서드

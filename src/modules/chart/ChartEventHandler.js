@@ -102,6 +102,7 @@ export class ChartEventHandler {
   }
 
   handleMouseDown(e) {
+    // e.preventDefault();
     if (this.isDrawingMode && this.drawingTool) {
       return;
     }
@@ -125,7 +126,7 @@ export class ChartEventHandler {
 
       this.isDragging = true;
       this.subscribeChartUpdate("mouse-down");
-      e.preventDefault();
+      // e.preventDefault();
     } catch (error) {
       console.error("Error in handleMouseDown:", error);
     }
