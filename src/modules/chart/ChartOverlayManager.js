@@ -1163,58 +1163,56 @@ export class ChartOverlayManager {
     if (!this.overlayCtx) return;
 
     const ctx = this.overlayCtx;
+    const chartArea = this.getChartAreaInfo() || this.chart.chartArea;
+
+    // 차트 영역으로 클리핑 설정
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(
+      chartArea.left,
+      chartArea.top,
+      chartArea.right - chartArea.left,
+      chartArea.bottom - chartArea.top
+    );
+    ctx.clip();
 
     // 간소화된 렌더링 로직
     if (this.renderBuffer.lines.length > 0) {
-      ctx.save();
-      ctx.beginPath();
-
       for (const line of this.renderBuffer.lines) {
+        ctx.beginPath();
         ctx.strokeStyle = line.style.strokeStyle || "#ffffff";
         ctx.lineWidth = line.style.lineWidth || 2;
         ctx.moveTo(line.startPixelX, line.startPixelY);
         ctx.lineTo(line.endPixelX, line.endPixelY);
         ctx.stroke();
       }
-
-      ctx.restore();
     }
 
     if (this.renderBuffer.horizontalLines.length > 0) {
-      ctx.save();
-      ctx.beginPath();
-
       for (const hLine of this.renderBuffer.horizontalLines) {
+        ctx.beginPath();
         ctx.strokeStyle = hLine.style.strokeStyle || "#ffffff";
         ctx.lineWidth = hLine.style.lineWidth || 2;
         ctx.moveTo(hLine.left, hLine.pixelY);
         ctx.lineTo(hLine.right, hLine.pixelY);
         ctx.stroke();
       }
-
-      ctx.restore();
     }
 
     if (this.renderBuffer.verticalLines.length > 0) {
-      ctx.save();
-      ctx.beginPath();
-
       for (const vLine of this.renderBuffer.verticalLines) {
+        ctx.beginPath();
         ctx.strokeStyle = vLine.style.strokeStyle || "#ffffff";
         ctx.lineWidth = vLine.style.lineWidth || 2;
         ctx.moveTo(vLine.pixelX, vLine.top);
         ctx.lineTo(vLine.pixelX, vLine.bottom);
         ctx.stroke();
       }
-
-      ctx.restore();
     }
 
     if (this.renderBuffer.extendedLines.length > 0) {
-      ctx.save();
-      ctx.beginPath();
-
       for (const extLine of this.renderBuffer.extendedLines) {
+        ctx.beginPath();
         ctx.strokeStyle = extLine.style.strokeStyle || "#ffffff";
         ctx.lineWidth = extLine.style.lineWidth || 2;
         ctx.moveTo(
@@ -1224,26 +1222,23 @@ export class ChartOverlayManager {
         ctx.lineTo(extLine.extendedPoints.end.x, extLine.extendedPoints.end.y);
         ctx.stroke();
       }
-
-      ctx.restore();
     }
 
     if (this.renderBuffer.rays.length > 0) {
-      ctx.save();
-      ctx.beginPath();
-
       for (const ray of this.renderBuffer.rays) {
+        ctx.beginPath();
         ctx.strokeStyle = ray.style.strokeStyle || "#ffffff";
         ctx.lineWidth = ray.style.lineWidth || 2;
         ctx.moveTo(ray.startPixelX, ray.startPixelY);
         ctx.lineTo(ray.extendedEnd.x, ray.extendedEnd.y);
         ctx.stroke();
       }
-
-      ctx.restore();
     }
 
-    // 디버그 요소 렌더링 (필요한 경우만)
+    // 클리핑 해제
+    ctx.restore();
+
+    // 디버그 요소 렌더링 (클리핑 영역 밖에서 렌더링)
     if (this.debugCoordinates && this.renderBuffer.debugElements.length > 0) {
       for (const debugElement of this.renderBuffer.debugElements) {
         if (debugElement.type === "chartArea") {
