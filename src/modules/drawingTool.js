@@ -36,11 +36,11 @@ export class DrawingTool {
     this.currentTool = null;
 
     this.tools = [
-      { name: "Line", icon: "/icons/line.svg" },
-      { name: "ExtendedLine", icon: "/icons/extended line.svg" },
-      { name: "Ray", icon: "/icons/ray.svg" },
-      { name: "HorizontalLine", icon: "/icons/horizontal line.svg" },
-      { name: "VerticalLine", icon: "/icons/vertical line.svg" },
+      { name: "Line", icon: "./icons/line.svg" },
+      { name: "ExtendedLine", icon: "./icons/extended line.svg" },
+      { name: "Ray", icon: "./icons/ray.svg" },
+      { name: "HorizontalLine", icon: "./icons/horizontal line.svg" },
+      { name: "VerticalLine", icon: "./icons/vertical line.svg" },
     ];
 
     // 커스텀 이벤트 리스너를 위한 맵 추가
