@@ -5,7 +5,7 @@ import {
 } from "chartjs-chart-financial";
 import "chartjs-adapter-date-fns";
 import { ChartCrosshair } from "./chartCrosshair";
-import { chartColors } from "./theme";
+import { chartColors } from "./theme.js";
 import axios from "axios";
 import { tickerInstance } from "./ticker";
 import {

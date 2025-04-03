@@ -1,7 +1,6 @@
 import { ChartTest } from "./modules/chartTest.js";
 import { DrawingTool } from "./modules/drawingTool.js";
 import { EventManager, EventTypes } from "./utilities/eventManager.js";
-import { tickerInstance } from "./modules/ticker.js";
 
 class MainCanvas {
   constructor(parent) {
