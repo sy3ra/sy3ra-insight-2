@@ -1,5 +1,6 @@
 # 고성능 인터랙티브 차트 분석 도구 개발
-![Thumbnail](https://github.com/user-attachments/assets/4f6e21b8-f821-4027-9f6e-442f6e7cd84f)
+
+![화면 기록 2025-04-17 16 03 41](https://github.com/user-attachments/assets/96c74238-c157-4559-9b12-603de50399ea)
 
 ### **기간 :** 2025.01 ~ 2025.03
 
